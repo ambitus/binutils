@@ -554,6 +554,10 @@ case $1 in
 				basic_machine=ymp-cray
 				os=unicos
 				;;
+      zos)
+        basic_machine=s390x-ibm
+        os=zos
+        ;;
 			*)
 				basic_machine=$1
 				os=
@@ -1376,7 +1380,7 @@ case $os in
 	     | powermax* | dnix* | nx6 | nx7 | sei* | dragonfly* \
 	     | skyos* | haiku* | rdos* | toppers* | drops* | es* \
 	     | onefs* | tirtos* | phoenix* | fuchsia* | redox* | bme* \
-	     | midnightbsd*)
+	     | midnightbsd* | zos*)
 	# Remember, each alternative MUST END IN *, to match a version number.
 		;;
 	qnx*)

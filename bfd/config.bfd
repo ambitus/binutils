@@ -1208,6 +1208,11 @@ case "${targ}" in
     targ_selvecs=s390_elf32_vec
     want64=true
     ;;
+  s390x-*-zos*)
+    targ_defvec=s390_po_vec
+    targ_selvecs=s390_elf64_vec
+    want64=true
+    ;;
   s390x-*-tpf*)
     targ_defvec=s390_elf64_vec
     want64=true

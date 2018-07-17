@@ -363,6 +363,7 @@ case ${generic_target} in
 
   s390-*-linux-*)			fmt=elf em=linux ;;
   s390-*-tpf*)				fmt=elf ;;
+  s390-*-zos*)				fmt=elf ;;
 
   score-*-elf)				fmt=elf ;;
 
