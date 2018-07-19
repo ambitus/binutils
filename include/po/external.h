@@ -1,3 +1,24 @@
+/* IBM z/OS Program Object support
+   Copyright (C) 2018 Rocket Software
+   Contributed by Michael Colavita (mcolavita@rocketsoftware.com)
+ 
+   This file is part of BFD, the Binary File Descriptor library.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
+   02110-1301, USA.  */
+
 #ifndef _PO_EXTERNAL_H
 #define _PO_EXTERNAL_H
 
@@ -230,7 +251,9 @@ struct po_external_pgstb_entry {
 #define PLMH_SIZE(x)                   (PLMH_BASE_SIZE + (x) * HEADER_REC_DECL_SIZE)
 #define PLMH_MAX_SIZE                  (PLMH_SIZE(8))
 
-#define HEADER_REC_DECL_SIZE        (sizeof(struct po_external_header_rec_decl))
+#define HEADER_REC_DECL_SIZE           (sizeof(struct po_external_header_rec_decl))
+
+#define PMAR_SIZE                      (sizeof(struct po_external_pmar))
 
 #endif
 

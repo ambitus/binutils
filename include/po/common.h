@@ -1,3 +1,24 @@
+/* IBM z/OS Program Object support
+   Copyright (C) 2018 Rocket Software
+   Contributed by Michael Colavita (mcolavita@rocketsoftware.com)
+ 
+   This file is part of BFD, the Binary File Descriptor library.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
+   02110-1301, USA.  */
+
 #ifndef _PO_COMMON_H
 #define _PO_COMMON_H
 
@@ -11,6 +32,8 @@
 #define PLMH_REC_TYPE_LIDX             0x0006
 #define PLMH_REC_TYPE_ENTRY            0x0007
 #define PLMH_REC_TYPE_BXLF             0x0008
+
+#define PO_NAME_SIZE                   8
 
 #define PMAR_PO_LEVEL_PM1              0x01
 #define PMAR_PO_LEVEL_PM2              0x02

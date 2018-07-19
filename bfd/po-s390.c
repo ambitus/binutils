@@ -1,3 +1,24 @@
+/* IBM z/OS Program Object support
+   Copyright (C) 2018 Rocket Software
+   Contributed by Michael Colavita (mcolavita@rocketsoftware.com)
+ 
+   This file is part of BFD, the Binary File Descriptor library.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
+   02110-1301, USA.  */
+
 #include "sysdep.h"
 #include "bfd.h"
 #include "bfdlink.h"
@@ -49,6 +70,13 @@ const unsigned char iso88591_to_ibm1047[256] = {
 static const char eyecatcher_plmh[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD3, 0xD4, 0xC8, 0x40 };
 
 static void
+convert_iso88591_to_ibm1047 (char *ascii, char *ebcdic, bfd_size_type length)
+{
+  for (unsigned i = 0; i < length; i ++)
+    ebcdic[i] = iso88591_to_ibm1047[(int) ascii[i]];
+}
+
+static void
 bfd_po_swap_plmh_out (bfd *abfd, struct po_internal_plmh *src, struct po_external_plmh *dst)
 {
   memset(dst, 0, sizeof(*dst));
@@ -68,28 +96,77 @@ bfd_po_swap_header_rec_decl_out (bfd *abfd, struct po_internal_header_rec_decl *
   H_PUT_32 (abfd, src->rec_length, &dst->rec_length);
 }
 
+static void
+bfd_po_swap_pmar_out (bfd *abfd, struct po_internal_pmar *src, struct po_external_pmar *dst)
+{
+  H_PUT_16 (abfd, src->length, &dst->length);
+  dst->po_level = src->po_level;
+  dst->binder_level = src->binder_level;
+  dst->attr1 = src->attr1;
+  dst->attr2 = src->attr2;
+  dst->attr3 = src->attr3;
+  dst->attr4 = src->attr4;
+  dst->attr5 = src->attr5;
+  dst->apf_auth_code = src->apf_auth_code;
+  H_PUT_32 (abfd, src->virtual_storage_required, &dst->virtual_storage_required);
+  H_PUT_32 (abfd, src->main_entry_point_offset, &dst->main_entry_point_offset);
+  H_PUT_32 (abfd, src->this_entry_point_offset, &dst->this_entry_point_offset);
+  dst->change_level_of_member = src->change_level_of_member;
+  dst->ssi_flag_byte = src->ssi_flag_byte;
+  memcpy(dst->member_serial_number, src->member_serial_number, sizeof(dst->member_serial_number));
+  memcpy(dst->extended_attributes, src->extended_attributes, sizeof(dst->extended_attributes));
+}
+
 static bfd_boolean
 bfd_po_write_header (__attribute__((unused)) bfd *abfd)
 {
   /* Finalize header */
-  unsigned int rec_count = 1;
+  unsigned int rec_count = 2;
   po_header(abfd).length = PLMH_SIZE(rec_count);
+  po_header(abfd).uncompressed_module_size = PLMH_SIZE(rec_count) + sizeof (struct po_external_pmar); /* TODO */
   po_header(abfd).rec_decl_count = rec_count;
   po_header(abfd).rec_decls = bfd_zmalloc2(rec_count, HEADER_REC_DECL_SIZE);
 
   po_header(abfd).rec_decls[0] = (struct po_internal_header_rec_decl) {
+    .rec_type = PLMH_REC_TYPE_PO_NAME,
+    .rec_offset = PLMH_SIZE(2),
+    .rec_length = PO_NAME_SIZE
+  };
+
+  po_header(abfd).rec_decls[1] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_PMAR,
-    .rec_offset = PLMH_SIZE(1),
+    .rec_offset = PLMH_SIZE(2) + PO_NAME_SIZE,
     .rec_length = sizeof(struct po_external_pmar)
   };
+
+  /* Finalize PMAR TODO */
+
+  /* Finalize PMARL TODO */
 
   /* Output header */
   char header_buf[PLMH_MAX_SIZE];
   bfd_po_swap_plmh_out(abfd, &po_header(abfd), (struct po_external_plmh *) header_buf);
-  bfd_po_swap_header_rec_decl_out(abfd, &po_header(abfd).rec_decls[0], (struct po_external_header_rec_decl *) (header_buf + PLMH_BASE_SIZE));
+  for (unsigned int i = 0; i < rec_count; i ++)
+    bfd_po_swap_header_rec_decl_out(abfd, &po_header(abfd).rec_decls[i], (struct po_external_header_rec_decl *) (header_buf + PLMH_SIZE(i)));
 
   if (bfd_seek(abfd, 0, SEEK_SET) != 0 || bfd_bwrite(header_buf, po_header(abfd).length, abfd) != po_header(abfd).length)
     goto fail_free;
+
+  /* Output demonic thing TODO */
+
+  /* Output PO name */
+  char name_ibm1047[PO_NAME_SIZE];
+  convert_iso88591_to_ibm1047(po_name(abfd), name_ibm1047, PO_NAME_SIZE);
+  if (bfd_bwrite(name_ibm1047, PO_NAME_SIZE, abfd) != PO_NAME_SIZE)
+    goto fail_free;
+
+  /* Output PMAR */
+  char pmar[PMAR_SIZE];
+  bfd_po_swap_pmar_out(abfd, &po_pmar(abfd), (struct po_external_pmar *) pmar);
+  if (bfd_bwrite(pmar, PMAR_SIZE, abfd) != PMAR_SIZE)
+    goto fail_free;
+
+  /* Output PMARL */
 
   return TRUE;
 
@@ -105,15 +182,17 @@ bfd_po_new_section_hook (bfd *abfd, sec_ptr sec)
 }
 
 static bfd_boolean
-bfd_po_set_section_contents (bfd *abfd, sec_ptr sec, const void *contents, file_ptr offset, bfd_size_type len)
+bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unused)) sec_ptr sec, __attribute ((unused)) const void *contents, __attribute ((unused)) file_ptr offset, __attribute ((unused)) bfd_size_type len)
 {
   // const struct bfd_po_section_data *sdata;
   // sdata = (struct bfd_po_section_data *) sec->used_by_bfd;
 
-  printf("size %lu\n", sec->size);
-  printf("name %s\n", sec->name);
+  // printf("size %lu\n", sec->size);
+  // printf("name %s\n", sec->name);
 
-  return _bfd_generic_set_section_contents(abfd, sec, contents, offset, len);
+  // return _bfd_generic_set_section_contents(abfd, sec, contents, offset, len);
+
+  return TRUE;
 }
 
 static bfd_boolean
@@ -149,6 +228,9 @@ bfd_po_mkobject (bfd *abfd)
   po_pmarl(abfd).attr1 |= PMARL_ATTR1_NO_PDS_CONVERT;
   po_pmarl(abfd).attr1 |= PMARL_ATTR2_SEG1_RMODE31;
   memset(po_pmarl(abfd).userid, ' ', sizeof(po_pmarl(abfd).userid));
+
+  /* Clear PO name */
+  memset(&po_name(abfd), ' ', sizeof(po_name(abfd)));
 
   return TRUE;
 }
