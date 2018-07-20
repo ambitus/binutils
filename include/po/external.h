@@ -275,5 +275,8 @@ struct po_external_pgstb_entry {
 #define PMAR_SIZE                      (sizeof(struct po_external_pmar))
 #define PMARL_SIZE                     (sizeof(struct po_external_pmarl))
 
+#define PRAT_BASE_SIZE                 (sizeof(struct po_external_prat))
+#define PRDT_BASE_SIZE                 (sizeof(struct po_external_prdt))
+
 #endif
 

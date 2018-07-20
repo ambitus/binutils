@@ -271,11 +271,19 @@ bfd_finalize_header (bfd *abfd)
   /* Advance past PMAR and PMARL */
   file_pos += PMAR_SIZE + PMARL_SIZE;
 
-  /* Finalize PRAT and PRDT TODO */
-  po_pmarl(abfd).prdt_length = 0xdeadbeef;
-  po_pmarl(abfd).prdt_offset = 0xdeadbeef;
-  po_pmarl(abfd).prat_length = 0xdeadbeef;
-  po_pmarl(abfd).prat_offset = 0xdeadbeef;
+  /* Finalize PRAT TODO */
+  po_pmarl(abfd).prat_length = PRAT_BASE_SIZE;
+  po_pmarl(abfd).prat_offset = file_pos;
+
+  /* Advance past PRAT TODO */
+  file_pos += PRAT_BASE_SIZE;
+
+  /* Finalize PRDT TODO */
+  po_pmarl(abfd).prdt_length = PRDT_BASE_SIZE;
+  po_pmarl(abfd).prdt_offset = file_pos;
+
+  /* Advance past PRDT TODO */
+  file_pos += PRDT_BASE_SIZE;
 
   BFD_ASSERT (rec_num == rec_count);
 
