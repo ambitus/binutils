@@ -71,6 +71,7 @@ static const char eyecatcher_plmh[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD3, 0xD4, 0xC8
 static const char eyecatcher_prat[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD9, 0xC1, 0xE3, 0x40 };
 static const char eyecatcher_prdt[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD9, 0xC4, 0xE3, 0x40 };
 static const char eyecatcher_lidx[] = { 0xC9, 0xC5, 0xE6, 0xD3, 0xC9, 0xC4, 0xE7, 0x40 };
+static const char eyecatcher_psegm[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xE2, 0xC5, 0xC7, 0xD4 };
 
 static void
 convert_iso88591_to_ibm1047 (char *ebcdic, char *ascii, bfd_size_type length)
@@ -218,6 +219,25 @@ bfd_po_swap_lidx_entry_out (bfd *abfd, struct po_internal_lidx_entry *src, struc
   H_PUT_32 (abfd, src->entry_offset, &dst->entry_offset);
 }
 
+static void
+bfd_po_swap_psegm_out (bfd *abfd, struct po_internal_psegm *src, struct po_external_psegm *dst)
+{
+  memset(dst, 0, sizeof(*dst));
+  memcpy(dst->fixed_eyecatcher, src->fixed_eyecatcher, sizeof(dst->fixed_eyecatcher));
+  H_PUT_32 (abfd, src->length, &dst->length);
+  dst->version = src->version;
+  H_PUT_32 (abfd, src->entry_count, &dst->entry_count);
+}
+
+static void
+bfd_po_swap_psegm_entry_out (bfd *abfd, struct po_internal_psegm_entry *src, struct po_external_psegm_entry *dst)
+{
+  memset(dst, 0, sizeof(*dst));
+  H_PUT_32 (abfd, src->length, &dst->length);
+  H_PUT_32 (abfd, src->offset, &dst->offset);
+  dst->flags = src->flags;
+}
+
 /*
  * This function finalizes the header of the program object, loading completed internal
  * representations into the po_obj_tdata structure. To do so, it traverses the structures
@@ -225,7 +245,7 @@ bfd_po_swap_lidx_entry_out (bfd *abfd, struct po_internal_lidx_entry *src, struc
  * and substitutes these values in the appropriate locations.
  */
 static bfd_boolean
-bfd_finalize_header (bfd *abfd)
+bfd_po_finalize_header (bfd *abfd)
 {
   unsigned int rec_num = 0;
   unsigned int file_pos = 0;
@@ -349,7 +369,12 @@ bfd_finalize_header (bfd *abfd)
   file_pos += PRDT_BASE_SIZE;
 
   /* Finalize LIDX */
-  const unsigned int lidx_elements = 0;
+  const unsigned int lidx_elements = 1;
+  unsigned int lidx_element_num = 0;
+  po_lidx_entries(abfd) = bfd_zmalloc2(lidx_elements, sizeof(struct po_internal_lidx_entry));
+  if (po_lidx_entries(abfd) == NULL)
+    return FALSE;
+
   po_lidx(abfd).element_count = lidx_elements;
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_LIDX,
@@ -360,7 +385,30 @@ bfd_finalize_header (bfd *abfd)
   /* Advance past LIDX and entries */
   file_pos += LIDX_HEADER_SIZE(lidx_elements);
 
-  /* Finalize LIDX elements TODO */
+  /* Finalize PSEGM */
+  const unsigned int segments = 1;
+  po_psegm_entries(abfd) = bfd_zmalloc2(segments, sizeof(struct po_internal_psegm_entry));
+  if (po_psegm_entries(abfd) == NULL)
+    return FALSE;
+
+  po_psegm(abfd).length = PSEGM_SIZE(segments);
+  po_psegm(abfd).entry_count =segments;
+  po_psegm_entries(abfd)[0] = (struct po_internal_psegm_entry) {
+    .length = 0xdeadbeef,
+    .offset = 0xdeadbeef,
+    .flags = PSEGM_EXECUTABLE | PSEGM_UNKNOWN
+  };
+
+  po_lidx_entries(abfd)[lidx_element_num ++] = (struct po_internal_lidx_entry) {
+    .type = LIDX_ENTRY_TYPE_PSEGM,
+    .entry_offset = file_pos,
+    .entry_length = PSEGM_SIZE(segments)
+  };
+
+  /* Advance past PSEGM */
+  file_pos += PSEGM_SIZE(segments);
+
+  BFD_ASSERT (lidx_element_num = lidx_elements);
 
   /* Finalize entry point */
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
@@ -375,7 +423,26 @@ bfd_finalize_header (bfd *abfd)
 }
 
 static bfd_boolean
-bfd_output_header_lidx (bfd *abfd)
+bfd_po_output_psegm(bfd *abfd)
+{
+  char psegm[PSEGM_BASE_SIZE];
+  bfd_po_swap_psegm_out(abfd, &po_psegm(abfd), (struct po_external_psegm *) psegm);
+  if (bfd_bwrite(psegm, PSEGM_BASE_SIZE, abfd) != PSEGM_BASE_SIZE)
+    return FALSE;
+
+  char psegm_entry[PSEGM_ENTRY_SIZE];
+  for (unsigned int i = 0; i < po_psegm(abfd).entry_count; i ++)
+    {
+      bfd_po_swap_psegm_entry_out(abfd, &po_psegm_entries(abfd)[i], (struct po_external_psegm_entry *) psegm_entry);
+      if (bfd_bwrite(psegm_entry, PSEGM_ENTRY_SIZE, abfd) != PSEGM_ENTRY_SIZE)
+        return FALSE;
+    }
+
+  return TRUE;
+}
+
+static bfd_boolean
+bfd_po_output_header_lidx (bfd *abfd)
 {
   /* Output LIDX header */
   char lidx[LIDX_HEADER_BASE_SIZE];
@@ -385,40 +452,36 @@ bfd_output_header_lidx (bfd *abfd)
   
   /* Output LIDX header entries */
   char lidx_entry[LIDX_HEADER_ENTRY_SIZE];
-  struct po_internal_lidx_entry *entry = po_lidx_entry_list(abfd);
   for (unsigned int i = 0; i < po_lidx(abfd).element_count; i ++)
     {
-      bfd_po_swap_lidx_entry_out(abfd, entry, (struct po_external_lidx_entry *) lidx_entry);
-      if (bfd_bwrite(lidx, LIDX_HEADER_ENTRY_SIZE, abfd) != LIDX_HEADER_ENTRY_SIZE)
+      bfd_po_swap_lidx_entry_out(abfd, &po_lidx_entries(abfd)[i], (struct po_external_lidx_entry *) lidx_entry);
+      if (bfd_bwrite(lidx_entry, LIDX_HEADER_ENTRY_SIZE, abfd) != LIDX_HEADER_ENTRY_SIZE)
         return FALSE;
-
-      entry = entry->_next;
     }
 
   /* Output LIDX entries */
-  entry = po_lidx_entry_list(abfd);
   for (unsigned int i = 0; i < po_lidx(abfd).element_count; i ++)
     {
-      switch (entry->type)
+      switch (po_lidx_entries(abfd)[i].type)
         {
           case LIDX_ENTRY_TYPE_PSEGM:
+            if (!bfd_po_output_psegm(abfd))
+              return FALSE;
             break;
           case LIDX_ENTRY_TYPE_PGSTB:
-            break;
+            return FALSE;
           case LIDX_ENTRY_TYPE_PDSIT:
-            break;
+            return FALSE;
           default:
             return FALSE;
         }
-
-      entry = entry->_next;
     }
 
   return TRUE;
 }
 
 static bfd_boolean
-bfd_output_header (bfd *abfd)
+bfd_po_output_header (bfd *abfd)
 {
   /* Output header */
   char header_buf[PLMH_BASE_SIZE];
@@ -487,7 +550,7 @@ bfd_output_header (bfd *abfd)
   if (bfd_bwrite(prdt, PRDT_BASE_SIZE, abfd) != PRDT_BASE_SIZE)
     goto fail_free;
 
-  if (! bfd_output_header_lidx (abfd))
+  if (! bfd_po_output_header_lidx (abfd))
     goto fail_free;
 
   return TRUE;
@@ -500,7 +563,7 @@ fail_free:
 static bfd_boolean
 bfd_po_write_header (bfd *abfd)
 {
-  return bfd_finalize_header (abfd) && bfd_output_header (abfd);
+  return bfd_po_finalize_header (abfd) && bfd_po_output_header (abfd);
 }
 
 static bfd_boolean
@@ -567,7 +630,10 @@ bfd_po_mkobject (bfd *abfd)
   /* Initialize LIDX */
   memcpy(po_lidx(abfd).fixed_eyecatcher, eyecatcher_lidx, sizeof(eyecatcher_lidx));
   po_lidx(abfd).version = LIDX_VERSION;
-  po_lidx(abfd).element_count = 0;
+
+  /* Initialize PSEGM */
+  memcpy(po_psegm(abfd).fixed_eyecatcher, eyecatcher_psegm, sizeof(eyecatcher_psegm));
+  po_psegm(abfd).version = PSEGM_VERSION;
 
   return TRUE;
 }

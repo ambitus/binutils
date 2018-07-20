@@ -283,5 +283,8 @@ struct po_external_pgstb_entry {
 #define LIDX_HEADER_SIZE(x)            (LIDX_HEADER_BASE_SIZE + (x) * LIDX_HEADER_ENTRY_SIZE)
 #define LIDX_HEADER_ENTRY_SIZE         (sizeof(struct po_external_lidx_entry))
 
+#define PSEGM_BASE_SIZE                (sizeof(struct po_external_psegm))
+#define PSEGM_SIZE(x)                  (PSEGM_BASE_SIZE + (x) * PSEGM_ENTRY_SIZE)
+#define PSEGM_ENTRY_SIZE               (sizeof(struct po_external_psegm_entry))
 #endif
 

@@ -139,14 +139,23 @@ struct po_internal_lidx {
   unsigned int element_count;
 };
 
+struct po_internal_psegm {
+  unsigned char fixed_eyecatcher[8];
+  bfd_size_type length;
+  unsigned char version;
+  unsigned int entry_count;
+};
+
+struct po_internal_psegm_entry {
+  bfd_size_type length;
+  bfd_vma offset;
+  unsigned char flags;
+};
+
 struct po_internal_lidx_entry {
   unsigned char type;
   bfd_vma entry_offset;
   bfd_size_type entry_length;
-
-  union {
-  } _contents;
-  struct po_internal_lidx_entry *_next;
 };
 
 #endif

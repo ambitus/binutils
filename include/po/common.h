@@ -130,6 +130,8 @@
 #define LIDX_ENTRY_TYPE_PGSTB          0x03
 #define LIDX_ENTRY_TYPE_PDSIT          0x04
 
+#define PSEGM_VERSION                  0x03
+
 #define PSEGM_NO_LOAD                  0x80
 #define PSEGM_DEFERRED                 0x40
 #define PSEGM_EXECUTABLE               0x20

@@ -39,7 +39,9 @@
 #define po_prat(bfd)                      (po_tdata(bfd) -> prat)
 #define po_prdt(bfd)                      (po_tdata(bfd) -> prdt)
 #define po_lidx(bfd)                      (po_tdata(bfd) -> lidx)
-#define po_lidx_entry_list(bfd)           (po_tdata(bfd) -> lidx_entry_list)
+#define po_lidx_entries(bfd)              (po_tdata(bfd) -> lidx_entries)
+#define po_psegm(bfd)                     (po_tdata(bfd) -> psegm)
+#define po_psegm_entries(bfd)             (po_tdata(bfd) -> psegm_entries)
 
 struct po_obj_tdata {
   /* Internal structures */
@@ -50,7 +52,9 @@ struct po_obj_tdata {
   struct po_internal_prat                   prat;
   struct po_internal_prdt                   prdt;
   struct po_internal_lidx                   lidx;
-  struct po_internal_lidx_entry            *lidx_entry_list;
+  struct po_internal_lidx_entry            *lidx_entries;
+  struct po_internal_psegm                  psegm;
+  struct po_internal_psegm_entry           *psegm_entries;
   struct po_internal_po_name_header         po_name_header;
   struct po_internal_po_name_header_entry  *po_name_header_entries;
   char                                    **po_names;
