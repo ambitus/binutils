@@ -47,7 +47,21 @@ struct po_external_header_rec_decl {
   unsigned char rec_length[4];
 };
 
-/* TODO: demonic */
+/*
+ * PO name
+ */
+struct po_external_po_name_header {
+  unsigned char alias_count[4];
+};
+
+struct po_external_po_name_header_entry {
+  unsigned char reserved0[4]; /* MBZ */
+  unsigned char alias_offset[4];
+  unsigned char alias_length[2];
+  unsigned char flags;
+  unsigned char reserved1[3];
+  unsigned char alias_marker[2];
+};
 
 /*
  * IEWPMAR
@@ -87,6 +101,7 @@ struct po_external_pmarl {
   unsigned char program_length_no_gas[4];
   unsigned char program_length_gas[4];
   unsigned char offset_text[4];
+  unsigned char length_binder_index[4];
   unsigned char offset_binder_index[4];
   unsigned char prdt_length[4];
   unsigned char prdt_offset[4];
@@ -253,7 +268,12 @@ struct po_external_pgstb_entry {
 
 #define HEADER_REC_DECL_SIZE           (sizeof(struct po_external_header_rec_decl))
 
+#define PO_NAME_HEADER_BASE_SIZE       (sizeof(struct po_external_po_name_header))
+#define PO_NAME_HEADER_ENTRY_SIZE      (sizeof(struct po_external_po_name_header_entry))
+#define PO_NAME_HEADER_SIZE(x)         (PO_NAME_HEADER_BASE_SIZE + (x) * PO_NAME_HEADER_ENTRY_SIZE)
+
 #define PMAR_SIZE                      (sizeof(struct po_external_pmar))
+#define PMARL_SIZE                     (sizeof(struct po_external_pmarl))
 
 #endif
 

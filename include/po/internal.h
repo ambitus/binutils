@@ -29,18 +29,28 @@ struct po_external_pmarl;
 struct po_internal_prat_range;
 
 struct po_internal_plmh {
-  char                               fixed_eyecatcher[8];
-  bfd_size_type                      length;
-  unsigned char                      version;
-  bfd_size_type                      uncompressed_module_size;
-  unsigned int                       rec_decl_count;
-  struct po_internal_header_rec_decl *rec_decls;
+  char           fixed_eyecatcher[8];
+  bfd_size_type  length;
+  unsigned char  version;
+  bfd_size_type  uncompressed_module_size;
+  unsigned int   rec_decl_count;
 };
 
 struct po_internal_header_rec_decl {
   unsigned short rec_type;
   bfd_vma        rec_offset;
   bfd_vma        rec_length;
+};
+
+struct po_internal_po_name_header {
+  unsigned int alias_count;
+};
+
+struct po_internal_po_name_header_entry {
+  bfd_vma alias_offset;
+  unsigned short alias_length;
+  unsigned char flags;
+  unsigned char alias_marker[2];
 };
 
 struct po_internal_pmar {
@@ -70,7 +80,9 @@ struct po_internal_pmarl {
   unsigned char  po_sublevel;
   bfd_size_type  program_length_no_gas;
   bfd_size_type  program_length_gas;
+  bfd_size_type  length_text;
   bfd_vma        offset_text;
+  bfd_size_type  length_binder_index;
   bfd_vma        offset_binder_index;
   bfd_size_type  prdt_length;
   bfd_vma        prdt_offset;
@@ -86,7 +98,7 @@ struct po_internal_pmarl {
   bfd_vma        offset_to_second_text_segment;
   unsigned char date_saved[4]; /* Julian packed decimal */
   unsigned char time_saved[4]; /* packed decimal hhmmss */
-  unsigned char userid[8];
+  char userid[8];
   /* TODO: PM3 deliniation? */
   unsigned char pm3_flags;
   unsigned char cms_flags;
@@ -109,6 +121,13 @@ struct po_internal_prat {
 struct po_internal_prat_range {
   unsigned short begin;
   unsigned short end;
+};
+
+struct po_internal_prdt {
+  unsigned char fixed_eyecatcher[8];
+  bfd_size_type length;
+  unsigned char version;
+  bfd_size_type total_length;
 };
 
 #endif

@@ -26,17 +26,33 @@
 #include "po/internal.h"
 #include "po/external.h"
 
-#define po_tdata(bfd)  ((bfd) -> tdata.po_obj_data)
-#define po_header(bfd) (po_tdata(bfd) -> header)
-#define po_pmar(bfd) (po_tdata(bfd) -> pmar)
-#define po_pmarl(bfd) (po_tdata(bfd) -> pmarl)
-#define po_name(bfd) (po_tdata(bfd) -> name)
+#define po_tdata(bfd)      ((bfd) -> tdata.po_obj_data)
+
+#define po_header(bfd)                    (po_tdata(bfd) -> header)
+#define po_rec_decls(bfd)                 (po_tdata(bfd) -> rec_decls)
+#define po_rec_decl_count(bfd)            (po_tdata(bfd) -> rec_decl_count)
+#define po_pmar(bfd)                      (po_tdata(bfd) -> pmar)
+#define po_pmarl(bfd)                     (po_tdata(bfd) -> pmarl)
+#define po_name_header(bfd)               (po_tdata(bfd) -> po_name_header)
+#define po_name_header_entries(bfd)       (po_tdata(bfd) -> po_name_header_entries)
+#define po_names(bfd)                     (po_tdata(bfd) -> po_names)
+#define po_prat(bfd)                      (po_tdata(bfd) -> prat)
+#define po_prdt(bfd)                      (po_tdata(bfd) -> prdt)
 
 struct po_obj_tdata {
-  struct po_internal_plmh  header;
-  struct po_internal_pmar  pmar;
-  struct po_internal_pmarl pmarl;
-  char                     name[PO_NAME_SIZE];
+  /* Internal structures */
+  struct po_internal_plmh                   header;
+  struct po_internal_header_rec_decl       *rec_decls;
+  struct po_internal_pmar                   pmar;
+  struct po_internal_pmarl                  pmarl;
+  struct po_internal_prat                   prat;
+  struct po_internal_prdt                   prdt;
+  struct po_internal_po_name_header         po_name_header;
+  struct po_internal_po_name_header_entry  *po_name_header_entries;
+  char                                    **po_names;
+
+  /* Computed values */
+  unsigned                                  rec_decl_count;
 };
 
 #endif

@@ -24,7 +24,7 @@
 
 #define PLMH_VERSION                   0x03
 
-#define PLMH_REC_TYPE_DEMONIC          0x0001
+#define PLMH_REC_TYPE_PO_NAME_HEADER   0x0001
 #define PLMH_REC_TYPE_PO_NAME          0x0002
 #define PLMH_REC_TYPE_PMAR             0x0003
 #define PLMH_REC_TYPE_PRAT             0x0004
@@ -32,8 +32,6 @@
 #define PLMH_REC_TYPE_LIDX             0x0006
 #define PLMH_REC_TYPE_ENTRY            0x0007
 #define PLMH_REC_TYPE_BXLF             0x0008
-
-#define PO_NAME_SIZE                   8
 
 #define PMAR_PO_LEVEL_PM1              0x01
 #define PMAR_PO_LEVEL_PM2              0x02
@@ -122,6 +120,9 @@
 #define PMARL_CMS_GEN_WITH_ALL         0x08
 #define PMARL_CMS_GEN_XA_INVALID       0x04
 #define PMARL_CMS_GEN_XC_INVALID       0x02
+
+#define PRAT_VERSION                   0x01
+#define PRDT_VERSION                   0x01
 
 #define LIDX_ENTRY_TYPE_PSEGM          0x02
 #define LIDX_ENTRY_TYPE_PGSTB          0x03
