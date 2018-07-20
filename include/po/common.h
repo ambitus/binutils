@@ -124,6 +124,8 @@
 #define PRAT_VERSION                   0x01
 #define PRDT_VERSION                   0x01
 
+#define LIDX_VERSION                   0x01
+
 #define LIDX_ENTRY_TYPE_PSEGM          0x02
 #define LIDX_ENTRY_TYPE_PGSTB          0x03
 #define LIDX_ENTRY_TYPE_PDSIT          0x04

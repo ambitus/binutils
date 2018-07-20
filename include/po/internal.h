@@ -115,7 +115,9 @@ struct po_internal_prat {
   unsigned char fixed_eyecatcher[8];
   bfd_size_type length;
   unsigned char version;
-  struct po_internal_prat_range *ranges;
+  unsigned int num_entries;
+  unsigned int total_entries;
+  unsigned short single_entry_length;
 };
 
 struct po_internal_prat_range {
@@ -128,6 +130,23 @@ struct po_internal_prdt {
   bfd_size_type length;
   unsigned char version;
   bfd_size_type total_length;
+};
+
+struct po_internal_lidx {
+  unsigned char fixed_eyecatcher[8];
+  bfd_size_type length;
+  unsigned char version;
+  unsigned int element_count;
+};
+
+struct po_internal_lidx_entry {
+  unsigned char type;
+  bfd_vma entry_offset;
+  bfd_size_type entry_length;
+
+  union {
+  } _contents;
+  struct po_internal_lidx_entry *_next;
 };
 
 #endif

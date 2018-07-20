@@ -70,6 +70,7 @@ const unsigned char iso88591_to_ibm1047[256] = {
 static const char eyecatcher_plmh[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD3, 0xD4, 0xC8, 0x40 };
 static const char eyecatcher_prat[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD9, 0xC1, 0xE3, 0x40 };
 static const char eyecatcher_prdt[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD9, 0xC4, 0xE3, 0x40 };
+static const char eyecatcher_lidx[] = { 0xC9, 0xC5, 0xE6, 0xD3, 0xC9, 0xC4, 0xE7, 0x40 };
 
 static void
 convert_iso88591_to_ibm1047 (char *ebcdic, char *ascii, bfd_size_type length)
@@ -176,6 +177,53 @@ bfd_po_swap_po_name_header_entry_out (bfd *abfd, struct po_internal_po_name_head
   memcpy(dst->alias_marker, src->alias_marker, sizeof(dst->alias_marker));
 }
 
+static void
+bfd_po_swap_prat_out (bfd *abfd, struct po_internal_prat *src, struct po_external_prat *dst)
+{
+  memset(dst, 0, sizeof(*dst));
+  memcpy(dst->fixed_eyecatcher, src->fixed_eyecatcher, sizeof(dst->fixed_eyecatcher));
+  H_PUT_32 (abfd, src->length, &dst->length);
+  dst->version = src->version;
+  H_PUT_32 (abfd, src->num_entries, &dst->num_entries);
+  H_PUT_32 (abfd, src->total_entries, &dst->total_entries);
+  H_PUT_16 (abfd, src->single_entry_length, &dst->single_entry_length);
+}
+
+static void
+bfd_po_swap_prdt_out (bfd *abfd, struct po_internal_prdt *src, struct po_external_prdt *dst)
+{
+  memset(dst, 0, sizeof(*dst));
+  memcpy(dst->fixed_eyecatcher, src->fixed_eyecatcher, sizeof(dst->fixed_eyecatcher));
+  H_PUT_32 (abfd, src->length, &dst->length);
+  dst->version = src->version;
+  H_PUT_32 (abfd, src->total_length, &dst->total_length);
+}
+
+static void
+bfd_po_swap_lidx_out (bfd *abfd, struct po_internal_lidx *src, struct po_external_lidx *dst)
+{
+  memset(dst, 0, sizeof(*dst));
+  memcpy(dst->fixed_eyecatcher, src->fixed_eyecatcher, sizeof(dst->fixed_eyecatcher));
+  H_PUT_32 (abfd, src->length, &dst->length);
+  dst->version = src->version;
+  H_PUT_32 (abfd, src->element_count, &dst->element_count);
+}
+
+static void
+bfd_po_swap_lidx_entry_out (bfd *abfd, struct po_internal_lidx_entry *src, struct po_external_lidx_entry *dst)
+{
+  memset(dst, 0, sizeof(*dst));
+  dst->type = src->type;
+  H_PUT_32 (abfd, src->entry_length, &dst->entry_length);
+  H_PUT_32 (abfd, src->entry_offset, &dst->entry_offset);
+}
+
+/*
+ * This function finalizes the header of the program object, loading completed internal
+ * representations into the po_obj_tdata structure. To do so, it traverses the structures
+ * in order to compute their final lengths, uses these to compute the elements' offsets,
+ * and substitutes these values in the appropriate locations.
+ */
 static bfd_boolean
 bfd_finalize_header (bfd *abfd)
 {
@@ -183,7 +231,7 @@ bfd_finalize_header (bfd *abfd)
   unsigned int file_pos = 0;
 
   /* Finalize header */
-  const unsigned int rec_count = 3;
+  const unsigned int rec_count = 7;
   po_header(abfd).length = PLMH_SIZE(rec_count);
   po_header(abfd).uncompressed_module_size = 0xDEADBEEF; /* TODO */
   po_header(abfd).rec_decl_count = rec_count;
@@ -274,6 +322,15 @@ bfd_finalize_header (bfd *abfd)
   /* Finalize PRAT TODO */
   po_pmarl(abfd).prat_length = PRAT_BASE_SIZE;
   po_pmarl(abfd).prat_offset = file_pos;
+  po_prat(abfd).length = PRAT_BASE_SIZE; /* TODO rlds? */
+  po_prat(abfd).num_entries = 0;
+  po_prat(abfd).total_entries = 0;
+  po_prat(abfd).single_entry_length = 2;
+  po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
+    .rec_type = PLMH_REC_TYPE_PRAT,
+    .rec_offset = file_pos,
+    .rec_length = PRAT_BASE_SIZE /* TODO */
+  };
 
   /* Advance past PRAT TODO */
   file_pos += PRAT_BASE_SIZE;
@@ -281,11 +338,81 @@ bfd_finalize_header (bfd *abfd)
   /* Finalize PRDT TODO */
   po_pmarl(abfd).prdt_length = PRDT_BASE_SIZE;
   po_pmarl(abfd).prdt_offset = file_pos;
+  po_prdt(abfd).total_length = PRDT_BASE_SIZE; 
+  po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
+    .rec_type = PLMH_REC_TYPE_PRDT,
+    .rec_offset = file_pos,
+    .rec_length = PRDT_BASE_SIZE /* TODO */
+  };
 
   /* Advance past PRDT TODO */
   file_pos += PRDT_BASE_SIZE;
 
+  /* Finalize LIDX */
+  const unsigned int lidx_elements = 0;
+  po_lidx(abfd).element_count = lidx_elements;
+  po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
+    .rec_type = PLMH_REC_TYPE_LIDX,
+    .rec_offset = file_pos,
+    .rec_length = LIDX_HEADER_BASE_SIZE
+  };
+
+  /* Advance past LIDX and entries */
+  file_pos += LIDX_HEADER_SIZE(lidx_elements);
+
+  /* Finalize LIDX elements TODO */
+
+  /* Finalize entry point */
+  po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
+    .rec_type = PLMH_REC_TYPE_ENTRY,
+    .rec_offset = file_pos,
+    .rec_length = 0xdeadbeef /* TODO */
+  };
+
   BFD_ASSERT (rec_num == rec_count);
+
+  return TRUE;
+}
+
+static bfd_boolean
+bfd_output_header_lidx (bfd *abfd)
+{
+  /* Output LIDX header */
+  char lidx[LIDX_HEADER_BASE_SIZE];
+  bfd_po_swap_lidx_out(abfd, &po_lidx(abfd), (struct po_external_lidx *) lidx);
+  if (bfd_bwrite(lidx, LIDX_HEADER_BASE_SIZE, abfd) != LIDX_HEADER_BASE_SIZE)
+    return FALSE;
+  
+  /* Output LIDX header entries */
+  char lidx_entry[LIDX_HEADER_ENTRY_SIZE];
+  struct po_internal_lidx_entry *entry = po_lidx_entry_list(abfd);
+  for (unsigned int i = 0; i < po_lidx(abfd).element_count; i ++)
+    {
+      bfd_po_swap_lidx_entry_out(abfd, entry, (struct po_external_lidx_entry *) lidx_entry);
+      if (bfd_bwrite(lidx, LIDX_HEADER_ENTRY_SIZE, abfd) != LIDX_HEADER_ENTRY_SIZE)
+        return FALSE;
+
+      entry = entry->_next;
+    }
+
+  /* Output LIDX entries */
+  entry = po_lidx_entry_list(abfd);
+  for (unsigned int i = 0; i < po_lidx(abfd).element_count; i ++)
+    {
+      switch (entry->type)
+        {
+          case LIDX_ENTRY_TYPE_PSEGM:
+            break;
+          case LIDX_ENTRY_TYPE_PGSTB:
+            break;
+          case LIDX_ENTRY_TYPE_PDSIT:
+            break;
+          default:
+            return FALSE;
+        }
+
+      entry = entry->_next;
+    }
 
   return TRUE;
 }
@@ -350,6 +477,18 @@ bfd_output_header (bfd *abfd)
     goto fail_free;
 
   /* Output PRAT and PRDT */
+  char prat[PRAT_BASE_SIZE];
+  bfd_po_swap_prat_out(abfd, &po_prat(abfd), (struct po_external_prat *) prat);
+  if (bfd_bwrite(prat, PRAT_BASE_SIZE, abfd) != PRAT_BASE_SIZE)
+    goto fail_free;
+
+  char prdt[PRDT_BASE_SIZE];
+  bfd_po_swap_prdt_out(abfd, &po_prdt(abfd), (struct po_external_prdt *) prdt);
+  if (bfd_bwrite(prdt, PRDT_BASE_SIZE, abfd) != PRDT_BASE_SIZE)
+    goto fail_free;
+
+  if (! bfd_output_header_lidx (abfd))
+    goto fail_free;
 
   return TRUE;
 
@@ -423,6 +562,12 @@ bfd_po_mkobject (bfd *abfd)
   po_prat(abfd).version = PRAT_VERSION;
   memcpy(po_prdt(abfd).fixed_eyecatcher, eyecatcher_prdt, sizeof(eyecatcher_prdt));
   po_prdt(abfd).version = PRDT_VERSION;
+  po_prdt(abfd).total_length = PRDT_BASE_SIZE; 
+
+  /* Initialize LIDX */
+  memcpy(po_lidx(abfd).fixed_eyecatcher, eyecatcher_lidx, sizeof(eyecatcher_lidx));
+  po_lidx(abfd).version = LIDX_VERSION;
+  po_lidx(abfd).element_count = 0;
 
   return TRUE;
 }

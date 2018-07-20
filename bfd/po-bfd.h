@@ -26,7 +26,7 @@
 #include "po/internal.h"
 #include "po/external.h"
 
-#define po_tdata(bfd)      ((bfd) -> tdata.po_obj_data)
+#define po_tdata(bfd)                     ((bfd) -> tdata.po_obj_data)
 
 #define po_header(bfd)                    (po_tdata(bfd) -> header)
 #define po_rec_decls(bfd)                 (po_tdata(bfd) -> rec_decls)
@@ -38,6 +38,8 @@
 #define po_names(bfd)                     (po_tdata(bfd) -> po_names)
 #define po_prat(bfd)                      (po_tdata(bfd) -> prat)
 #define po_prdt(bfd)                      (po_tdata(bfd) -> prdt)
+#define po_lidx(bfd)                      (po_tdata(bfd) -> lidx)
+#define po_lidx_entry_list(bfd)           (po_tdata(bfd) -> lidx_entry_list)
 
 struct po_obj_tdata {
   /* Internal structures */
@@ -47,6 +49,8 @@ struct po_obj_tdata {
   struct po_internal_pmarl                  pmarl;
   struct po_internal_prat                   prat;
   struct po_internal_prdt                   prdt;
+  struct po_internal_lidx                   lidx;
+  struct po_internal_lidx_entry            *lidx_entry_list;
   struct po_internal_po_name_header         po_name_header;
   struct po_internal_po_name_header_entry  *po_name_header_entries;
   char                                    **po_names;

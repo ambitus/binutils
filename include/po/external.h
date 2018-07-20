@@ -139,9 +139,10 @@ struct po_external_prat {
   unsigned char length[4];
   unsigned char version;
   unsigned char reserved0[3]; /* MBZ */
-  unsigned char unknown0[4]; /* TODO */
-  unsigned char unknown1[4]; /* TODO */
-  unsigned char unknown2[4]; /* TODO */
+  unsigned char num_entries[4]; /* TODO */
+  unsigned char total_entries[4]; /* TODO */
+  unsigned char single_entry_length[2]; /* TODO */
+  unsigned char unknown1[2]; /* TODO */
   /* range pairs? TODO */
 };
 
@@ -157,7 +158,7 @@ struct po_external_prat_range {
  * IEWPRDT
  */
 struct po_external_prdt {
-  unsigned char fixed_eyecather[8];
+  unsigned char fixed_eyecatcher[8];
   unsigned char length[4];
   unsigned char version;
   unsigned char reserved0[3]; /* MBZ */
@@ -277,6 +278,10 @@ struct po_external_pgstb_entry {
 
 #define PRAT_BASE_SIZE                 (sizeof(struct po_external_prat))
 #define PRDT_BASE_SIZE                 (sizeof(struct po_external_prdt))
+
+#define LIDX_HEADER_BASE_SIZE          (sizeof(struct po_external_lidx))
+#define LIDX_HEADER_SIZE(x)            (LIDX_HEADER_BASE_SIZE + (x) * LIDX_HEADER_ENTRY_SIZE)
+#define LIDX_HEADER_ENTRY_SIZE         (sizeof(struct po_external_lidx_entry))
 
 #endif
 
