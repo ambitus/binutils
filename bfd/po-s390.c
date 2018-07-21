@@ -72,6 +72,7 @@ static const char eyecatcher_prat[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD9, 0xC1, 0xE3
 static const char eyecatcher_prdt[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD9, 0xC4, 0xE3, 0x40 };
 static const char eyecatcher_lidx[] = { 0xC9, 0xC5, 0xE6, 0xD3, 0xC9, 0xC4, 0xE7, 0x40 };
 static const char eyecatcher_psegm[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xE2, 0xC5, 0xC7, 0xD4 };
+static const char text_pad[] = { 0xC9, 0xC5, 0xE6, 0xD7 };
 
 static void
 convert_iso88591_to_ibm1047 (char *ebcdic, char *ascii, bfd_size_type length)
@@ -134,7 +135,7 @@ bfd_po_swap_pmarl_out (bfd *abfd, struct po_internal_pmarl *src, struct po_exter
   dst->fill_char_value = src->fill_char_value;
   dst->po_sublevel = src->po_sublevel;
   H_PUT_32 (abfd, src->program_length_no_gas, &dst->program_length_no_gas);
-  H_PUT_32 (abfd, src->program_length_gas, &dst->program_length_gas);
+  H_PUT_32 (abfd, src->length_text, &dst->length_text);
   H_PUT_32 (abfd, src->offset_text, &dst->offset_text);
   H_PUT_32 (abfd, src->offset_binder_index, &dst->offset_binder_index);
   H_PUT_32 (abfd, src->prdt_length, &dst->prdt_length);
@@ -142,7 +143,7 @@ bfd_po_swap_pmarl_out (bfd *abfd, struct po_internal_pmarl *src, struct po_exter
   H_PUT_32 (abfd, src->prat_length, &dst->prat_length);
   H_PUT_32 (abfd, src->prat_offset, &dst->prat_offset);
   H_PUT_32 (abfd, src->po_virtual_pages, &dst->po_virtual_pages);
-  H_PUT_32 (abfd, src->ls_loader_data_length, &dst->ls_loader_data_length);
+  H_PUT_32 (abfd, src->ls_loader_data_offset, &dst->ls_loader_data_offset);
   H_PUT_16 (abfd, src->loadable_segment_count, &dst->loadable_segment_count);
   H_PUT_16 (abfd, src->gas_table_entry_count, &dst->gas_table_entry_count);
   H_PUT_32 (abfd, src->virtual_storage_for_first_segment, &dst->virtual_storage_for_first_segment);
@@ -247,13 +248,15 @@ bfd_po_swap_psegm_entry_out (bfd *abfd, struct po_internal_psegm_entry *src, str
 static bfd_boolean
 bfd_po_finalize_header (bfd *abfd)
 {
+  if (abfd->output_has_begun)
+    return TRUE;
+
   unsigned int rec_num = 0;
   unsigned int file_pos = 0;
 
   /* Finalize header */
   const unsigned int rec_count = 8;
   po_header(abfd).length = PLMH_SIZE(rec_count);
-  po_header(abfd).uncompressed_module_size = 0xdeadbeef; /* TODO */
   po_header(abfd).rec_decl_count = rec_count;
 
   po_rec_decl_count(abfd) = rec_count;
@@ -304,31 +307,6 @@ bfd_po_finalize_header (bfd *abfd)
   /* Advance past PO name */
   file_pos += po_name_header_entries(abfd)[0].alias_length;
 
-  /* Finalize PMAR TODO */
-  po_pmar(abfd).virtual_storage_required = 0xdeadbeef;
-  po_pmar(abfd).main_entry_point_offset = 0xdeadbeef;
-  po_pmar(abfd).this_entry_point_offset = 0xdeadbeef;
-
-  /* Finalize PMARL TODO */
-  po_pmarl(abfd).program_length_no_gas = 0xdeadbeef;
-  po_pmarl(abfd).program_length_gas = 0xdeadbeef;
-  po_pmarl(abfd).offset_text = 0xdeadbeef;
-  po_pmarl(abfd).length_binder_index = 0xdeadbeef;
-  po_pmarl(abfd).offset_binder_index = 0xdeadbeef;
-  po_pmarl(abfd).po_virtual_pages = 0xdeadbeef;
-  po_pmarl(abfd).ls_loader_data_length = 0;
-  po_pmarl(abfd).loadable_segment_count = 0xbeef;
-  po_pmarl(abfd).gas_table_entry_count = 0xbeef;
-  po_pmarl(abfd).virtual_storage_for_first_segment = 0xdeadbeef;
-  po_pmarl(abfd).virtual_storage_for_second_segment = 0xdeadbeef;
-  po_pmarl(abfd).offset_to_second_text_segment = 0xdeadbeef;
-  char date[] = { 0x20, 0x18, 0x10, 0x4F };
-  char time[] = { 0x01, 0x83, 0x00, 0x5F };
-  memcpy(po_pmarl(abfd).date_saved, date, sizeof(date));
-  memcpy(po_pmarl(abfd).time_saved, time, sizeof(time));
-  po_pmarl(abfd).deferred_class_count = 0;
-  po_pmarl(abfd).offset_to_first_deferred_class = 0;
-  po_pmarl(abfd).offset_blit = 0xdeadbeef;
 
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_PMAR,
@@ -345,16 +323,16 @@ bfd_po_finalize_header (bfd *abfd)
   if (po_prat_entries(abfd) == NULL)
     return FALSE;
 
-  po_pmarl(abfd).prat_length = PRAT_BASE_SIZE;
-  po_pmarl(abfd).prat_offset = file_pos;
   po_prat(abfd).length = PRAT_SIZE(pages_needed + 1, 2); /* TODO rlds? */
   po_prat(abfd).occupied_entries = 0;
   po_prat(abfd).total_entries = pages_needed;
   po_prat(abfd).single_entry_length = 2;
+  po_pmarl(abfd).prat_length = PRAT_BASE_SIZE;
+  po_pmarl(abfd).prat_offset = po_prat(abfd).length;
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_PRAT,
     .rec_offset = file_pos,
-    .rec_length = po_pmarl(abfd).prat_offset
+    .rec_length = po_prat(abfd).length
   };
 
   /* Advance past PRAT */
@@ -390,6 +368,7 @@ bfd_po_finalize_header (bfd *abfd)
     .rec_offset = file_pos,
     .rec_length = LIDX_HEADER_BASE_SIZE
   };
+  po_pmarl(abfd).ls_loader_data_offset = file_pos;
 
   /* Advance past LIDX and entries */
   file_pos += LIDX_HEADER_SIZE(lidx_elements);
@@ -402,11 +381,6 @@ bfd_po_finalize_header (bfd *abfd)
 
   po_psegm(abfd).length = PSEGM_SIZE(segments);
   po_psegm(abfd).entry_count =segments;
-  po_psegm_entries(abfd)[0] = (struct po_internal_psegm_entry) {
-    .length = 0xdeadbeef,
-    .offset = 0xdeadbeef,
-    .flags = PSEGM_EXECUTABLE | PSEGM_UNKNOWN
-  };
 
   po_lidx_entries(abfd)[lidx_element_num ++] = (struct po_internal_lidx_entry) {
     .type = LIDX_ENTRY_TYPE_PSEGM,
@@ -419,20 +393,72 @@ bfd_po_finalize_header (bfd *abfd)
 
   BFD_ASSERT (lidx_element_num = lidx_elements);
 
+  /* Advance past pad */
+  file_pos += sizeof(text_pad);
+
+  /* Leave space for text TODO */
+  po_text_offset(abfd) = file_pos;
+  po_text_length(abfd) = 0;
+  for (struct bfd_section *section = abfd->sections; section != NULL; section = section->next)
+    {
+      po_text_length(abfd) += section->size;
+    }
+
   /* Finalize entry point */
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_ENTRY,
     .rec_offset = file_pos,
-    .rec_length = 0xdeadbeef /* TODO */
+    .rec_length = po_text_length(abfd)
   };
 
+  file_pos += po_text_length(abfd);
+
+  /* Empty BLXF reference */
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_BXLF,
     .rec_offset = file_pos, /* TODO */
-    .rec_length = 0xdeadbeef /* TODO */
+    .rec_length = 0
+  };
+
+  /* Finalize PMAR TODO */
+  const bfd_size_type module_size = ROUND_UP(file_pos, 0x1000);
+  po_pmar(abfd).virtual_storage_required = module_size;
+  po_pmar(abfd).main_entry_point_offset = po_text_offset(abfd);
+  po_pmar(abfd).this_entry_point_offset = po_text_offset(abfd);
+
+  /* Finalize PMARL TODO */
+  po_pmarl(abfd).program_length_no_gas = module_size / 0x1000;
+  po_pmarl(abfd).length_text = po_text_length(abfd);
+  po_pmarl(abfd).offset_text = po_text_offset(abfd);
+  po_pmarl(abfd).length_binder_index = 0; /* TODO */
+  po_pmarl(abfd).offset_binder_index = file_pos; /* TODO */
+  po_pmarl(abfd).po_virtual_pages = module_size / 0x1000;
+  po_pmarl(abfd).loadable_segment_count = 1; /* TODO */
+  po_pmarl(abfd).gas_table_entry_count = 0;
+  po_pmarl(abfd).virtual_storage_for_first_segment = ROUND_UP(po_text_length(abfd), 0x1000);
+  po_pmarl(abfd).virtual_storage_for_second_segment = 0;
+  po_pmarl(abfd).offset_to_second_text_segment = 0;
+  char date[] = { 0x20, 0x18, 0x10, 0x4F };
+  char time[] = { 0x01, 0x83, 0x00, 0x5F };
+  memcpy(po_pmarl(abfd).date_saved, date, sizeof(date));
+  memcpy(po_pmarl(abfd).time_saved, time, sizeof(time));
+  po_pmarl(abfd).deferred_class_count = 0;
+  po_pmarl(abfd).offset_to_first_deferred_class = 0;
+  po_pmarl(abfd).offset_blit = 0;
+
+  /* Last header details */
+  po_header(abfd).uncompressed_module_size = module_size;
+
+  /* Complete PSEGM */
+  po_psegm_entries(abfd)[0] = (struct po_internal_psegm_entry) {
+    .length = file_pos,
+    .offset = po_text_offset(abfd),
+    .flags = PSEGM_EXECUTABLE | PSEGM_UNKNOWN
   };
 
   BFD_ASSERT (rec_num == rec_count);
+
+  abfd->output_has_begun = TRUE;
 
   return TRUE;
 }
@@ -576,6 +602,9 @@ bfd_po_output_header (bfd *abfd)
   if (! bfd_po_output_header_lidx (abfd))
     goto fail_free;
 
+  if (bfd_bwrite(text_pad, sizeof(text_pad), abfd) != sizeof(text_pad))
+    goto fail_free;
+
   return TRUE;
 
 fail_free:
@@ -598,15 +627,19 @@ bfd_po_new_section_hook (bfd *abfd, sec_ptr sec)
 static bfd_boolean
 bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unused)) sec_ptr sec, __attribute ((unused)) const void *contents, __attribute ((unused)) file_ptr offset, __attribute ((unused)) bfd_size_type len)
 {
-  // const struct bfd_po_section_data *sdata;
-  // sdata = (struct bfd_po_section_data *) sec->used_by_bfd;
+  if (! bfd_po_finalize_header(abfd))
+      return FALSE;
 
-  // printf("size %lu\n", sec->size);
-  // printf("name %s\n", sec->name);
+  /* to hell with order TODO */
+  bfd_vma filepos = po_text_offset(abfd);
+  for (struct bfd_section *section = abfd->sections; section != NULL; section = section->next)
+    {
+      if (section != sec)
+        filepos += section->size;
+    }
+  sec->filepos = filepos;
 
-  // return _bfd_generic_set_section_contents(abfd, sec, contents, offset, len);
-
-  return TRUE;
+  return _bfd_generic_set_section_contents (abfd, sec, contents, offset, len);
 }
 
 static bfd_boolean
@@ -622,7 +655,7 @@ bfd_po_mkobject (bfd *abfd)
 
   /* Initialize PMAR */
   po_pmar(abfd).length = PMAR_SIZE;
-  po_pmar(abfd).po_level = PMAR_PO_LEVEL_PM3;
+  po_pmar(abfd).po_level = PMAR_PO_LEVEL_PM4;
   po_pmar(abfd).binder_level = PMAR_BINDER_LEVEL_B5;
 
   /* Set default PMAR flags */
@@ -630,7 +663,7 @@ bfd_po_mkobject (bfd *abfd)
   po_pmar(abfd).attr2 |= PMAR_ATTR2_BINDER_F_LEVEL_REQ;
   po_pmar(abfd).attr2 |= PMAR_ATTR2_ORG0;
   po_pmar(abfd).attr2 |= PMAR_ATTR2_NO_RLD;
-  po_pmar(abfd).attr2 |= PMAR_ATTR2_NO_REPROCESS;
+  // po_pmar(abfd).attr2 |= PMAR_ATTR2_NO_REPROCESS;
   po_pmar(abfd).attr3 |= PMAR_ATTR3_PMARL_PRESENT;
   po_pmar(abfd).attr4 |= PMAR_ATTR4_RMODE31;
   po_pmar(abfd).attr4 |= PMAR_AMODE64;
@@ -652,6 +685,7 @@ bfd_po_mkobject (bfd *abfd)
 
   /* Initialize LIDX */
   memcpy(po_lidx(abfd).fixed_eyecatcher, eyecatcher_lidx, sizeof(eyecatcher_lidx));
+  po_lidx(abfd).length = LIDX_HEADER_BASE_SIZE;
   po_lidx(abfd).version = LIDX_VERSION;
 
   /* Initialize PSEGM */
@@ -664,30 +698,19 @@ bfd_po_mkobject (bfd *abfd)
 static bfd_boolean
 bfd_po_write_object_contents (__attribute ((unused)) bfd *abfd)
 {
-  // asection *current;
+  if (!bfd_po_write_header (abfd))
+    return FALSE;
 
-  // for (current = abfd->sections; current != NULL; current = current->next)
-  //   {
-  //     const struct bfd_po_section_data *sdata;
-  //     printf("Section (%lu bytes):\n", current->size);
-  //     printf("  Name: %s\n", current->name);
-  //     printf("  Contents:\n");
-  //     if (current->flags & SEC_HAS_CONTENTS) {
-  //       sdata = (struct bfd_po_section_data *) current->used_by_bfd;
+  /* Pad length to nearest page */
+  bfd_size_type full_len = po_text_offset(abfd) + po_text_length (abfd); /* TODO */
+  if (bfd_seek (abfd, full_len, SEEK_SET) != 0)
+    return FALSE;
 
-  //       for (unsigned i = 0; i < sdata->contents_length; i += 16) {
-  //         for (unsigned i2 = i; i2 < i + 16 && i2 < sdata->contents_length; i2 ++) {
-  //           printf("%02x", sdata->contents_buffer[i2]);
-  //         }
-  //         printf("\n");
-  //       }
-  //     } else {
-  //       printf("    No content.\n");
-  //     }
-
-  //     printf("\n");
-  //   }
-  bfd_po_write_header (abfd);
+  char zeros[0x1000];
+  memset(zeros, 0, sizeof(zeros));
+  bfd_size_type size_delta = ROUND_UP(full_len, 0x1000) - full_len;
+  if (bfd_bwrite (zeros, size_delta, abfd) != size_delta)
+    return FALSE;
 
   return TRUE;
 }

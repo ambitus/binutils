@@ -99,7 +99,7 @@ struct po_external_pmarl {
   unsigned char fill_char_value;
   unsigned char po_sublevel;
   unsigned char program_length_no_gas[4];
-  unsigned char program_length_gas[4];
+  unsigned char length_text[4];
   unsigned char offset_text[4];
   unsigned char length_binder_index[4];
   unsigned char offset_binder_index[4];
@@ -108,7 +108,7 @@ struct po_external_pmarl {
   unsigned char prat_length[4];
   unsigned char prat_offset[4];
   unsigned char po_virtual_pages[4];
-  unsigned char ls_loader_data_length[4];
+  unsigned char ls_loader_data_offset[4];
   /* TODO: PM2 deliniation? */
   unsigned char loadable_segment_count[2];
   unsigned char gas_table_entry_count[2];
@@ -254,6 +254,7 @@ struct po_external_pgstb_entry {
  *  - PMAP
  */
 
+#define ROUND_UP(x,y)                  (((x) + (y) - 1) / (y) * (y))
 #define PLMH_BASE_SIZE                 (sizeof(struct po_external_plmh))
 #define PLMH_SIZE(x)                   (PLMH_BASE_SIZE + (x) * HEADER_REC_DECL_SIZE)
 #define PLMH_MAX_SIZE                  (PLMH_SIZE(8))
@@ -268,7 +269,7 @@ struct po_external_pgstb_entry {
 #define PMARL_SIZE                     (sizeof(struct po_external_pmarl))
 
 #define PRAT_BASE_SIZE                 (sizeof(struct po_external_prat))
-#define PRAT_SIZE(x,y)                 ((3 + (PRAT_BASE_SIZE + (x) * (y))) / 4 * 4)
+#define PRAT_SIZE(x,y)                 ROUND_UP(PRAT_BASE_SIZE + (x) * (y), 4)
 #define PRDT_BASE_SIZE                 (sizeof(struct po_external_prdt))
 
 #define LIDX_HEADER_BASE_SIZE          (sizeof(struct po_external_lidx))

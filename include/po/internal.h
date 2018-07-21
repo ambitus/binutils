@@ -79,7 +79,6 @@ struct po_internal_pmarl {
   unsigned char  fill_char_value;
   unsigned char  po_sublevel;
   bfd_size_type  program_length_no_gas;
-  bfd_size_type  program_length_gas;
   bfd_size_type  length_text;
   bfd_vma        offset_text;
   bfd_size_type  length_binder_index;
@@ -89,7 +88,7 @@ struct po_internal_pmarl {
   bfd_size_type  prat_length;
   bfd_vma        prat_offset;
   unsigned int   po_virtual_pages;
-  bfd_size_type  ls_loader_data_length;
+  bfd_size_type  ls_loader_data_offset;
   /* TODO: PM2 deliniation? */
   unsigned short loadable_segment_count;
   unsigned short gas_table_entry_count;

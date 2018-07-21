@@ -43,6 +43,8 @@
 #define po_lidx_entries(bfd)              (po_tdata(bfd) -> lidx_entries)
 #define po_psegm(bfd)                     (po_tdata(bfd) -> psegm)
 #define po_psegm_entries(bfd)             (po_tdata(bfd) -> psegm_entries)
+#define po_text_offset(bfd)             (po_tdata(bfd) -> text_offset)
+#define po_text_length(bfd)             (po_tdata(bfd) -> text_length)
 
 struct po_obj_tdata {
   /* High level internal structures */
@@ -65,6 +67,8 @@ struct po_obj_tdata {
 
   /* Computed values */
   unsigned                                  rec_decl_count;
+  bfd_vma                                   text_offset;
+  bfd_vma                                   text_length;
 };
 
 #endif
