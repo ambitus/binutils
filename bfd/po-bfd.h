@@ -37,6 +37,7 @@
 #define po_name_header_entries(bfd)       (po_tdata(bfd) -> po_name_header_entries)
 #define po_names(bfd)                     (po_tdata(bfd) -> po_names)
 #define po_prat(bfd)                      (po_tdata(bfd) -> prat)
+#define po_prat_entries(bfd)              (po_tdata(bfd) -> prat_entries)
 #define po_prdt(bfd)                      (po_tdata(bfd) -> prdt)
 #define po_lidx(bfd)                      (po_tdata(bfd) -> lidx)
 #define po_lidx_entries(bfd)              (po_tdata(bfd) -> lidx_entries)
@@ -44,20 +45,23 @@
 #define po_psegm_entries(bfd)             (po_tdata(bfd) -> psegm_entries)
 
 struct po_obj_tdata {
-  /* Internal structures */
+  /* High level internal structures */
   struct po_internal_plmh                   header;
-  struct po_internal_header_rec_decl       *rec_decls;
   struct po_internal_pmar                   pmar;
   struct po_internal_pmarl                  pmarl;
   struct po_internal_prat                   prat;
   struct po_internal_prdt                   prdt;
   struct po_internal_lidx                   lidx;
-  struct po_internal_lidx_entry            *lidx_entries;
   struct po_internal_psegm                  psegm;
-  struct po_internal_psegm_entry           *psegm_entries;
   struct po_internal_po_name_header         po_name_header;
+
+  /* Repeating internal structures TODO: refactor? */
+  struct po_internal_header_rec_decl       *rec_decls;
+  struct po_internal_lidx_entry            *lidx_entries;
+  struct po_internal_psegm_entry           *psegm_entries;
   struct po_internal_po_name_header_entry  *po_name_header_entries;
   char                                    **po_names;
+  bfd_vma                                  *prat_entries;
 
   /* Computed values */
   unsigned                                  rec_decl_count;

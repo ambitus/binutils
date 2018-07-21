@@ -115,14 +115,9 @@ struct po_internal_prat {
   unsigned char fixed_eyecatcher[8];
   bfd_size_type length;
   unsigned char version;
-  unsigned int num_entries;
+  unsigned int occupied_entries;
   unsigned int total_entries;
   unsigned short single_entry_length;
-};
-
-struct po_internal_prat_range {
-  unsigned short begin;
-  unsigned short end;
 };
 
 struct po_internal_prdt {

@@ -185,7 +185,7 @@ bfd_po_swap_prat_out (bfd *abfd, struct po_internal_prat *src, struct po_externa
   memcpy(dst->fixed_eyecatcher, src->fixed_eyecatcher, sizeof(dst->fixed_eyecatcher));
   H_PUT_32 (abfd, src->length, &dst->length);
   dst->version = src->version;
-  H_PUT_32 (abfd, src->num_entries, &dst->num_entries);
+  H_PUT_32 (abfd, src->occupied_entries, &dst->occupied_entries);
   H_PUT_32 (abfd, src->total_entries, &dst->total_entries);
   H_PUT_16 (abfd, src->single_entry_length, &dst->single_entry_length);
 }
@@ -251,9 +251,9 @@ bfd_po_finalize_header (bfd *abfd)
   unsigned int file_pos = 0;
 
   /* Finalize header */
-  const unsigned int rec_count = 7;
+  const unsigned int rec_count = 8;
   po_header(abfd).length = PLMH_SIZE(rec_count);
-  po_header(abfd).uncompressed_module_size = 0xDEADBEEF; /* TODO */
+  po_header(abfd).uncompressed_module_size = 0xdeadbeef; /* TODO */
   po_header(abfd).rec_decl_count = rec_count;
 
   po_rec_decl_count(abfd) = rec_count;
@@ -339,33 +339,42 @@ bfd_po_finalize_header (bfd *abfd)
   /* Advance past PMAR and PMARL */
   file_pos += PMAR_SIZE + PMARL_SIZE;
 
-  /* Finalize PRAT TODO */
+  /* Finalize PRAT */
+  const unsigned int pages_needed = 1;
+  po_prat_entries(abfd) = bfd_zmalloc2(sizeof(bfd_vma), pages_needed + 1);
+  if (po_prat_entries(abfd) == NULL)
+    return FALSE;
+
   po_pmarl(abfd).prat_length = PRAT_BASE_SIZE;
   po_pmarl(abfd).prat_offset = file_pos;
-  po_prat(abfd).length = PRAT_BASE_SIZE; /* TODO rlds? */
-  po_prat(abfd).num_entries = 0;
-  po_prat(abfd).total_entries = 0;
+  po_prat(abfd).length = PRAT_SIZE(pages_needed + 1, 2); /* TODO rlds? */
+  po_prat(abfd).occupied_entries = 0;
+  po_prat(abfd).total_entries = pages_needed;
   po_prat(abfd).single_entry_length = 2;
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_PRAT,
     .rec_offset = file_pos,
-    .rec_length = PRAT_BASE_SIZE /* TODO */
+    .rec_length = po_pmarl(abfd).prat_offset
   };
 
-  /* Advance past PRAT TODO */
-  file_pos += PRAT_BASE_SIZE;
+  /* Advance past PRAT */
+  file_pos += PRAT_SIZE(pages_needed + 1, 2);
 
-  /* Finalize PRDT TODO */
+  /* Finalize PRDT */
   po_pmarl(abfd).prdt_length = PRDT_BASE_SIZE;
   po_pmarl(abfd).prdt_offset = file_pos;
   po_prdt(abfd).total_length = PRDT_BASE_SIZE; 
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_PRDT,
     .rec_offset = file_pos,
-    .rec_length = PRDT_BASE_SIZE /* TODO */
+    .rec_length = po_prdt(abfd).total_length
   };
 
-  /* Advance past PRDT TODO */
+  /* Update PRAT pointers */
+  po_prat_entries(abfd)[0] = 0;
+  po_prat_entries(abfd)[1] = po_prdt(abfd).total_length;
+
+  /* Advance past PRDT */
   file_pos += PRDT_BASE_SIZE;
 
   /* Finalize LIDX */
@@ -414,6 +423,12 @@ bfd_po_finalize_header (bfd *abfd)
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_ENTRY,
     .rec_offset = file_pos,
+    .rec_length = 0xdeadbeef /* TODO */
+  };
+
+  po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
+    .rec_type = PLMH_REC_TYPE_BXLF,
+    .rec_offset = file_pos, /* TODO */
     .rec_length = 0xdeadbeef /* TODO */
   };
 
@@ -545,6 +560,14 @@ bfd_po_output_header (bfd *abfd)
   if (bfd_bwrite(prat, PRAT_BASE_SIZE, abfd) != PRAT_BASE_SIZE)
     goto fail_free;
 
+  char prat_entry[2]; /* TODO */
+  for (unsigned i = 0; i < po_prat(abfd).total_entries + 1; i ++) {
+    unsigned short entry = po_prat_entries(abfd)[i];
+    H_PUT_16 (abfd, entry, prat_entry);
+    if (bfd_bwrite(prat_entry, 2, abfd) != 2)
+      goto fail_free;
+  }
+
   char prdt[PRDT_BASE_SIZE];
   bfd_po_swap_prdt_out(abfd, &po_prdt(abfd), (struct po_external_prdt *) prdt);
   if (bfd_bwrite(prdt, PRDT_BASE_SIZE, abfd) != PRDT_BASE_SIZE)
@@ -625,7 +648,7 @@ bfd_po_mkobject (bfd *abfd)
   po_prat(abfd).version = PRAT_VERSION;
   memcpy(po_prdt(abfd).fixed_eyecatcher, eyecatcher_prdt, sizeof(eyecatcher_prdt));
   po_prdt(abfd).version = PRDT_VERSION;
-  po_prdt(abfd).total_length = PRDT_BASE_SIZE; 
+  po_prdt(abfd).length = PRDT_BASE_SIZE; 
 
   /* Initialize LIDX */
   memcpy(po_lidx(abfd).fixed_eyecatcher, eyecatcher_lidx, sizeof(eyecatcher_lidx));
