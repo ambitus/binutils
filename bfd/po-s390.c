@@ -394,7 +394,10 @@ bfd_po_finalize_header (bfd *abfd)
   BFD_ASSERT (lidx_element_num = lidx_elements);
 
   /* Advance past pad */
-  file_pos += sizeof(text_pad);
+  const unsigned int remainder_words = (16 - (file_pos - (file_pos / 16 * 16))) / 4;
+  for (unsigned i = 0; i < remainder_words; i ++)
+    file_pos += sizeof(text_pad);
+  po_text_pad_words(abfd) = remainder_words;
 
   /* Leave space for text TODO */
   po_text_offset(abfd) = file_pos;
@@ -420,11 +423,11 @@ bfd_po_finalize_header (bfd *abfd)
     .rec_length = 0
   };
 
-  /* Finalize PMAR TODO */
+  /* Finalize PMAR */
   const bfd_size_type module_size = ROUND_UP(file_pos, 0x1000);
-  po_pmar(abfd).virtual_storage_required = module_size;
-  po_pmar(abfd).main_entry_point_offset = po_text_offset(abfd);
-  po_pmar(abfd).this_entry_point_offset = po_text_offset(abfd);
+  po_pmar(abfd).virtual_storage_required = po_text_length(abfd);
+  po_pmar(abfd).main_entry_point_offset = 0;
+  po_pmar(abfd).this_entry_point_offset = 0;
 
   /* Finalize PMARL TODO */
   po_pmarl(abfd).program_length_no_gas = module_size / 0x1000;
@@ -451,7 +454,7 @@ bfd_po_finalize_header (bfd *abfd)
 
   /* Complete PSEGM */
   po_psegm_entries(abfd)[0] = (struct po_internal_psegm_entry) {
-    .length = file_pos,
+    .length = po_text_length(abfd),
     .offset = po_text_offset(abfd),
     .flags = PSEGM_EXECUTABLE | PSEGM_UNKNOWN
   };
@@ -602,8 +605,9 @@ bfd_po_output_header (bfd *abfd)
   if (! bfd_po_output_header_lidx (abfd))
     goto fail_free;
 
-  if (bfd_bwrite(text_pad, sizeof(text_pad), abfd) != sizeof(text_pad))
-    goto fail_free;
+  for (unsigned i = 0; i < po_text_pad_words(abfd); i ++)
+    if (bfd_bwrite(text_pad, sizeof(text_pad), abfd) != sizeof(text_pad))
+      goto fail_free;
 
   return TRUE;
 
@@ -632,11 +636,8 @@ bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unu
 
   /* to hell with order TODO */
   bfd_vma filepos = po_text_offset(abfd);
-  for (struct bfd_section *section = abfd->sections; section != NULL; section = section->next)
-    {
-      if (section != sec)
-        filepos += section->size;
-    }
+  for (struct bfd_section *section = abfd->sections; section != sec; section = section->next)
+    filepos += section->size;
   sec->filepos = filepos;
 
   return _bfd_generic_set_section_contents (abfd, sec, contents, offset, len);
@@ -673,7 +674,8 @@ bfd_po_mkobject (bfd *abfd)
 
   /* Set default PMARL flags */
   po_pmarl(abfd).attr1 |= PMARL_ATTR1_NO_PDS_CONVERT;
-  po_pmarl(abfd).attr1 |= PMARL_ATTR2_SEG1_RMODE31;
+  po_pmarl(abfd).attr2 |= PMARL_ATTR2_COMPRESSED;
+  po_pmarl(abfd).attr2 |= PMARL_ATTR2_SEG1_RMODE31;
   memset(po_pmarl(abfd).userid, ' ', sizeof(po_pmarl(abfd).userid));
 
   /* Initialize PRAT and PRDT */

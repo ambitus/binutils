@@ -22,7 +22,7 @@
 #ifndef _PO_COMMON_H
 #define _PO_COMMON_H
 
-#define PLMH_VERSION                   0x03
+#define PLMH_VERSION                   0x04
 
 #define PLMH_REC_TYPE_PO_NAME_HEADER   0x0001
 #define PLMH_REC_TYPE_PO_NAME          0x0002
