@@ -1,0 +1,4 @@
+# TEMPLATE_NAME=pos390
+SCRIPT_NAME=pos390
+ARCH="s390:64-bit"
+

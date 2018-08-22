@@ -39,6 +39,8 @@
 #define po_prat(bfd)                      (po_tdata(bfd) -> prat)
 #define po_prat_entries(bfd)              (po_tdata(bfd) -> prat_entries)
 #define po_prdt(bfd)                      (po_tdata(bfd) -> prdt)
+#define po_prdt_page_headers(bfd)         (po_tdata(bfd) -> prdt_page_headers)
+#define po_prdt_entries(bfd)              (po_tdata(bfd) -> prdt_entries)
 #define po_lidx(bfd)                      (po_tdata(bfd) -> lidx)
 #define po_lidx_entries(bfd)              (po_tdata(bfd) -> lidx_entries)
 #define po_psegm(bfd)                     (po_tdata(bfd) -> psegm)
@@ -46,6 +48,9 @@
 #define po_text_offset(bfd)             (po_tdata(bfd) -> text_offset)
 #define po_text_length(bfd)             (po_tdata(bfd) -> text_length)
 #define po_text_pad_words(bfd)             (po_tdata(bfd) -> text_pad_words)
+#define po_prat_pad_bytes(bfd)             (po_tdata(bfd) -> prat_pad_bytes)
+#define po_headers_computed(bfd)           (po_tdata(bfd) -> headers_computed)
+#define po_section_contents(bfd)           (po_tdata(bfd) -> section_contents)
 
 struct po_obj_tdata {
   /* High level internal structures */
@@ -60,17 +65,22 @@ struct po_obj_tdata {
 
   /* Repeating internal structures TODO: refactor? */
   struct po_internal_header_rec_decl       *rec_decls;
+  struct po_internal_prdt_entry           **prdt_entries;
+  struct po_internal_prdt_page_header      *prdt_page_headers;
   struct po_internal_lidx_entry            *lidx_entries;
   struct po_internal_psegm_entry           *psegm_entries;
   struct po_internal_po_name_header_entry  *po_name_header_entries;
   char                                    **po_names;
   bfd_vma                                  *prat_entries;
+  char                                     *section_contents;
 
   /* Computed values */
   unsigned                                  rec_decl_count;
   bfd_vma                                   text_offset;
   bfd_vma                                   text_length;
   unsigned int                              text_pad_words;
+  unsigned int                              prat_pad_bytes;
+  bfd_boolean                               headers_computed;
 };
 
 #endif

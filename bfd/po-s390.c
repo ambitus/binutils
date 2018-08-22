@@ -23,7 +23,9 @@
 #include "bfd.h"
 #include "bfdlink.h"
 #include "libbfd.h"
+#include "genlink.h"
 #include "po-bfd.h"
+#include "elf/s390.h"
 
 __attribute__((unused))
 static
@@ -202,6 +204,26 @@ bfd_po_swap_prdt_out (bfd *abfd, struct po_internal_prdt *src, struct po_externa
 }
 
 static void
+bfd_po_swap_prdt_page_header_out (bfd *abfd, struct po_internal_prdt_page_header *src, struct po_external_prdt_page_header *dst)
+{
+  memset(dst, 0, sizeof(*dst));
+  H_PUT_32 (abfd, src->page_number, &dst->page_number);
+  H_PUT_16 (abfd, src->segment_index, &dst->segment_index);
+  memcpy(dst->checksum, src->checksum, sizeof(dst->checksum));
+  H_PUT_16 (abfd, src->count, &dst->reloc_count_total);
+  dst->flags = src->flags;
+  dst->reference_id = src->reference_id;
+  H_PUT_16 (abfd, src->count_six_byte, &dst->reloc_count_six_byte);
+}
+
+static void
+bfd_po_swap_prdt_six_byte_reloc_out (bfd *abfd, const struct po_internal_prdt_entry *src, struct po_external_prdt_six_byte_reloc *dst)
+{
+  H_PUT_16 (abfd, src->full_offset, &dst->offset);
+  H_PUT_32 (abfd, src->addend, &dst->value);
+}
+
+static void
 bfd_po_swap_lidx_out (bfd *abfd, struct po_internal_lidx *src, struct po_external_lidx *dst)
 {
   memset(dst, 0, sizeof(*dst));
@@ -248,7 +270,7 @@ bfd_po_swap_psegm_entry_out (bfd *abfd, struct po_internal_psegm_entry *src, str
 static bfd_boolean
 bfd_po_finalize_header (bfd *abfd)
 {
-  if (abfd->output_has_begun)
+  if (po_headers_computed(abfd))
     return TRUE;
 
   unsigned int rec_num = 0;
@@ -318,7 +340,7 @@ bfd_po_finalize_header (bfd *abfd)
   file_pos += PMAR_SIZE + PMARL_SIZE;
 
   /* Finalize PRAT */
-  const unsigned int pages_needed = 1;
+  const unsigned int pages_needed = ROUND_UP(po_text_length(abfd), 0x1000) / 0x1000;
   po_prat_entries(abfd) = bfd_zmalloc2(sizeof(bfd_vma), pages_needed + 1);
   if (po_prat_entries(abfd) == NULL)
     return FALSE;
@@ -336,21 +358,41 @@ bfd_po_finalize_header (bfd *abfd)
   };
 
   /* Advance past PRAT */
-  file_pos += PRAT_SIZE(pages_needed + 1, 2);
+  unsigned int prat_size = PRAT_SIZE(pages_needed + 1, 2);
+  po_prat_pad_bytes(abfd) = prat_size - (PRAT_BASE_SIZE + (pages_needed + 1) * 2);
+  file_pos += prat_size;
 
   /* Finalize PRDT */
-  po_pmarl(abfd).prdt_length = PRDT_BASE_SIZE;
-  po_pmarl(abfd).prdt_offset = file_pos;
-  po_prdt(abfd).total_length = PRDT_BASE_SIZE; 
+  const bfd_vma prdt_offset = file_pos;
+  po_pmarl(abfd).prdt_offset = prdt_offset;
+  unsigned int prdt_pos = PRDT_BASE_SIZE;
+  for (unsigned i = 0; i < pages_needed; i ++)
+  {
+    const unsigned int entry_count = po_prdt_page_headers(abfd)[i].count;
+    if (entry_count > 0) {
+      /* TODO: this could cause out of bounds */
+      memcpy(po_prdt_page_headers(abfd)[i].checksum, po_section_contents(abfd) + i * 0x1000, 4);
+      po_prat_entries(abfd)[i] = prdt_pos;
+      const unsigned int page_entry_size = ROUND_UP(entry_count * 6, 4); /* TODO */
+      po_prdt(abfd).total_length += page_entry_size;
+      file_pos += PRDT_PAGE_HEADER_SIZE + page_entry_size;
+      prdt_pos += PRDT_PAGE_HEADER_SIZE + page_entry_size;
+      po_prat(abfd).occupied_entries ++;
+    } else {
+      po_prat_entries(abfd)[i] = 0;
+    }
+  }
+  po_prdt(abfd).total_length += PRDT_SIZE_NO_ENTRY(po_prat(abfd).occupied_entries);
+  po_pmarl(abfd).prdt_length = po_prdt(abfd).total_length;
+
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_PRDT,
-    .rec_offset = file_pos,
+    .rec_offset = prdt_offset,
     .rec_length = po_prdt(abfd).total_length
   };
 
   /* Update PRAT pointers */
-  po_prat_entries(abfd)[0] = 0;
-  po_prat_entries(abfd)[1] = po_prdt(abfd).total_length;
+  po_prat_entries(abfd)[pages_needed] = po_prdt(abfd).total_length;
 
   /* Advance past PRDT */
   file_pos += PRDT_BASE_SIZE;
@@ -401,11 +443,6 @@ bfd_po_finalize_header (bfd *abfd)
 
   /* Leave space for text TODO */
   po_text_offset(abfd) = file_pos;
-  po_text_length(abfd) = 0;
-  for (struct bfd_section *section = abfd->sections; section != NULL; section = section->next)
-    {
-      po_text_length(abfd) += section->size;
-    }
 
   /* Finalize entry point */
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
@@ -461,7 +498,7 @@ bfd_po_finalize_header (bfd *abfd)
 
   BFD_ASSERT (rec_num == rec_count);
 
-  abfd->output_has_begun = TRUE;
+  po_headers_computed(abfd) = TRUE;
 
   return TRUE;
 }
@@ -589,18 +626,48 @@ bfd_po_output_header (bfd *abfd)
   if (bfd_bwrite(prat, PRAT_BASE_SIZE, abfd) != PRAT_BASE_SIZE)
     goto fail_free;
 
-  char prat_entry[2]; /* TODO */
+  char prat_entry[2];
   for (unsigned i = 0; i < po_prat(abfd).total_entries + 1; i ++) {
     unsigned short entry = po_prat_entries(abfd)[i];
     H_PUT_16 (abfd, entry, prat_entry);
     if (bfd_bwrite(prat_entry, 2, abfd) != 2)
       goto fail_free;
   }
+  char prat_pad[8];
+  memset(prat_pad, 0, sizeof(prat_pad));
+  if (bfd_bwrite(prat_pad, po_prat_pad_bytes(abfd), abfd) != po_prat_pad_bytes(abfd))
+    goto fail_free;
 
   char prdt[PRDT_BASE_SIZE];
   bfd_po_swap_prdt_out(abfd, &po_prdt(abfd), (struct po_external_prdt *) prdt);
   if (bfd_bwrite(prdt, PRDT_BASE_SIZE, abfd) != PRDT_BASE_SIZE)
     goto fail_free;
+
+  char prdt_entry[8];
+  char prdt_page_header[PRDT_PAGE_HEADER_SIZE];
+  for (unsigned i = 0; i < po_prat(abfd).total_entries; i ++) {
+    const unsigned int entry_count = po_prdt_page_headers(abfd)[i].count;
+    if (entry_count > 0) {
+      bfd_po_swap_prdt_page_header_out(abfd, &po_prdt_page_headers(abfd)[i], (struct po_external_prdt_page_header *) prdt_page_header);
+      if (bfd_bwrite(prdt_page_header, PRDT_PAGE_HEADER_SIZE, abfd) != PRDT_PAGE_HEADER_SIZE)
+        goto fail_free;
+
+      const unsigned int page_entry_size = ROUND_UP(entry_count * 6, 4); /* TODO */
+      for (unsigned i2 = 0; i2 < entry_count; i2 ++)
+      {
+        const struct po_internal_prdt_entry *entry = &po_prdt_entries(abfd)[i][i2];
+        bfd_po_swap_prdt_six_byte_reloc_out(abfd, entry, (struct po_external_prdt_six_byte_reloc*) prdt_entry);
+        if (bfd_bwrite (prdt_entry, 6, abfd) != 6)
+          goto fail_free;
+      }
+
+      const unsigned pad = page_entry_size - entry_count * 6;
+      char zero_pad[8];
+      memset(zero_pad, 0, sizeof(zero_pad));
+      if (bfd_bwrite(zero_pad, pad, abfd) != pad)
+        goto fail_free;
+    }
+  }
 
   if (! bfd_po_output_header_lidx (abfd))
     goto fail_free;
@@ -631,16 +698,28 @@ bfd_po_new_section_hook (bfd *abfd, sec_ptr sec)
 static bfd_boolean
 bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unused)) sec_ptr sec, __attribute ((unused)) const void *contents, __attribute ((unused)) file_ptr offset, __attribute ((unused)) bfd_size_type len)
 {
-  if (! bfd_po_finalize_header(abfd))
-      return FALSE;
-
   /* to hell with order TODO */
+  struct bfd_section *section;
+  bfd_vma full_size = 0;
   bfd_vma filepos = po_text_offset(abfd);
-  for (struct bfd_section *section = abfd->sections; section != sec; section = section->next)
+  for (section = abfd->sections; section != sec; section = section->next) {
+    full_size += section->size;
     filepos += section->size;
+  }
+  for (; section != NULL; section = section->next) {
+    full_size += section->size;
+  }
   sec->filepos = filepos;
 
-  return _bfd_generic_set_section_contents (abfd, sec, contents, offset, len);
+  if (po_section_contents(abfd) == NULL) {
+    po_section_contents(abfd) = bfd_zmalloc(full_size);
+    if (po_section_contents(abfd) == NULL)
+      return FALSE;
+  }
+
+  memcpy(po_section_contents(abfd) + sec->filepos + offset, contents, len);
+
+  return TRUE;
 }
 
 static bfd_boolean
@@ -703,6 +782,12 @@ bfd_po_write_object_contents (__attribute ((unused)) bfd *abfd)
   if (!bfd_po_write_header (abfd))
     return FALSE;
 
+  /* Write text */
+  if (po_section_contents(abfd) != NULL)
+  {
+    if (bfd_bwrite (po_section_contents(abfd), po_text_length(abfd), abfd) != po_text_length(abfd))
+      return FALSE;
+  }
   /* Pad length to nearest page */
   bfd_size_type full_len = po_text_offset(abfd) + po_text_length (abfd); /* TODO */
   if (bfd_seek (abfd, full_len, SEEK_SET) != 0)
@@ -717,13 +802,180 @@ bfd_po_write_object_contents (__attribute ((unused)) bfd *abfd)
   return TRUE;
 }
 
+static int
+bfd_po_sizeof_headers (bfd *abfd ATTRIBUTE_UNUSED, struct bfd_link_info *info ATTRIBUTE_UNUSED)
+{
+  return 0;
+}
+
+static long
+bfd_po_get_reloc_upper_bound (bfd *abfd ATTRIBUTE_UNUSED, sec_ptr sec)
+{
+  return (sec->reloc_count + 1) * sizeof (arelent *);
+}
+
+static long
+bfd_po_canonicalize_reloc (bfd *abfd ATTRIBUTE_UNUSED, sec_ptr sec ATTRIBUTE_UNUSED, arelent **relocs ATTRIBUTE_UNUSED, struct bfd_symbol **syms ATTRIBUTE_UNUSED)
+{
+  return 0; /* TODO */
+}
+
+static reloc_howto_type *
+bfd_po_reloc_type_lookup (bfd *abfd ATTRIBUTE_UNUSED, bfd_reloc_code_real_type reloc ATTRIBUTE_UNUSED)
+{
+  return 0;
+}
+
+static reloc_howto_type *
+bfd_po_reloc_name_lookup (bfd *abfd ATTRIBUTE_UNUSED, const char *reloc ATTRIBUTE_UNUSED)
+{
+  return 0;
+}
+
+static bfd_boolean
+bfd_po_initialize_prdt(bfd *abfd)
+{
+  unsigned page_count = ROUND_UP(po_text_length(abfd), 0x1000) / 0x1000;
+  po_prdt_page_headers(abfd) = bfd_zmalloc2(page_count, sizeof(struct po_internal_prdt_page_header));
+  if (po_prdt_page_headers(abfd) == NULL)
+    return FALSE;
+  for (unsigned i = 0; i < page_count; i ++)
+  {
+    po_prdt_page_headers(abfd)[i].page_number = i;
+    po_prdt_page_headers(abfd)[i].segment_index = 0; /* TODO */
+    po_prdt_page_headers(abfd)[i].count = 0;
+    po_prdt_page_headers(abfd)[i].flags = 1;
+    po_prdt_page_headers(abfd)[i].reference_id = 0;
+    po_prdt_page_headers(abfd)[i].count_six_byte = 0;
+  }
+
+  po_prdt_entries(abfd) = bfd_zmalloc2(page_count, sizeof(struct po_internal_prdt_entry *));
+  if (po_prdt_entries(abfd) == NULL)
+    return FALSE;
+
+  return TRUE;
+}
+
+static bfd_boolean
+bfd_po_add_prdt_entry(bfd *abfd, struct po_internal_prdt_entry *entry)
+{
+  unsigned page_number = entry->full_offset / 0x1000;
+  unsigned entry_count = po_prdt_page_headers(abfd)[page_number].count;
+  if (entry_count == 0 || !(entry_count & (entry_count - 1)))
+  {
+    /* reallocation required */
+    const unsigned new_size = entry_count ? entry_count * 2 : 1;
+    po_prdt_entries(abfd)[page_number] = bfd_realloc2(po_prdt_entries(abfd)[page_number], new_size, sizeof(struct po_internal_prdt_entry));
+    if (po_prdt_entries(abfd)[page_number] == NULL)
+      return FALSE;
+  }
+
+  po_prdt_entries(abfd)[page_number][entry_count] = *entry;
+  po_prdt_page_headers(abfd)[page_number].count ++;
+  po_prdt_page_headers(abfd)[page_number].count_six_byte ++;
+
+  return TRUE;
+}
+
+static bfd_boolean
+bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
+{
+  /* Perform standard link */
+  if (!_bfd_generic_final_link(abfd, info))
+    return FALSE;
+
+  /* Compute text size TODO: right place? */
+  po_text_length(abfd) = 0;
+  for (struct bfd_section *section = abfd->sections; section != NULL; section = section->next)
+    {
+      po_text_length(abfd) += section->size;
+    }
+
+  if (!bfd_po_initialize_prdt(abfd))
+    return FALSE;
+
+  /* Capture z/OS relocatable relocs */
+  for (struct bfd_section *s = abfd->sections; s != NULL; s = s->next)
+  {
+    for (struct bfd_link_order *p = s->map_head.link_order; p != NULL; p = p->next)
+    {
+      if (p->type == bfd_indirect_link_order)
+      {
+        bfd *input_bfd = p->u.indirect.section->owner;
+        asection *input_section = p->u.indirect.section;
+        long reloc_size = bfd_get_reloc_upper_bound (input_bfd, input_section);
+        if (reloc_size < 0)
+          return FALSE;
+
+        arelent **reloc_vector = (arelent **) bfd_malloc(reloc_size);
+        if (reloc_vector == NULL)
+          return FALSE;
+
+        long reloc_count = bfd_canonicalize_reloc (input_bfd, input_section, reloc_vector, _bfd_generic_link_get_symbols(input_bfd));
+
+        if(reloc_count < 0)
+          return FALSE; /* TODO: memory leak */
+
+        if (reloc_count > 0)
+          for (arelent **parent = reloc_vector; *parent != NULL; parent ++)
+          {
+            asymbol *symbol = *(*parent)->sym_ptr_ptr;
+            if (symbol == NULL)
+              return FALSE;
+
+            switch ((*parent)->howto->type)
+            {
+              case R_390_32:
+                printf("Recording reloc of R_390_32\n");
+                /* TODO common symbols? */
+                long full_addend = symbol->section->output_offset;
+                full_addend += (*parent)->addend;
+                printf("  offset from base: %lu\n", full_addend);
+
+                long octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
+                long final_offset = input_section->output_offset + octets;
+                printf("  location: %lu\n", final_offset);
+                struct po_internal_prdt_entry entry = {
+                  .full_offset = final_offset,
+                  .addend = full_addend
+                };
+                if (!bfd_po_add_prdt_entry(abfd, &entry))
+                  return FALSE;
+                break;
+              default:
+                if ((*parent)->howto->pc_relative)
+                {
+                  /* These are fine */
+                  break;
+                }
+                _bfd_error_handler(_("Unsupported reloc type %d"), (*parent)->howto->type);
+                bfd_set_error (bfd_error_wrong_format);
+                return FALSE;
+            }
+          }
+      }
+      else
+        exit(1);
+    }
+  }
+
+  return TRUE; 
+}
+/*
+static bfd_boolean
+bfd_po_indirect_link_order (bfd *output_bfd, struct bfd_link_info *info, asection *output_section, struct bfd_link_order *link_order, bfd_boolean generic_linker)
+{
+}*/
+
+
+/* TODO disallow relocatable (incremental) */
 const bfd_target s390_po_vec = {
   "po-s390",
   bfd_target_unknown_flavour,
   BFD_ENDIAN_BIG,
   BFD_ENDIAN_BIG,
 
-  (BFD_RELOC_8 | BFD_RELOC_16 | BFD_RELOC_24 | BFD_RELOC_32 | EXEC_P | HAS_SYMS | WP_TEXT),
+  (HAS_RELOC | BFD_RELOC_8 | BFD_RELOC_16 | BFD_RELOC_24 | BFD_RELOC_32 | EXEC_P | HAS_SYMS | WP_TEXT),
   (SEC_ALLOC | SEC_LOAD | SEC_RELOC | SEC_HAS_CONTENTS),
   0,
   ' ',
@@ -759,19 +1011,59 @@ const bfd_target s390_po_vec = {
     _bfd_bool_bfd_false_error
   },
 
+  /* Generic */
   _bfd_generic_close_and_cleanup,
   _bfd_generic_bfd_free_cached_info,
   bfd_po_new_section_hook,
   _bfd_generic_get_section_contents,
   _bfd_generic_get_section_contents_in_window,
+
+  /* Copy */
   BFD_JUMP_TABLE_COPY(_bfd_generic), /* TODO? */
+  
+  /* Core */
   BFD_JUMP_TABLE_CORE(_bfd_nocore),
+
+  /* Archive */
   BFD_JUMP_TABLE_ARCHIVE(_bfd_noarchive), /* TODO */
+
+  /* Symbols */
   BFD_JUMP_TABLE_SYMBOLS(_bfd_nosymbols), /* TODO */
-  BFD_JUMP_TABLE_RELOCS(_bfd_norelocs), /* TODO */
+
+  /* Relocs */
+  bfd_po_get_reloc_upper_bound,
+  bfd_po_canonicalize_reloc, /* TODO: ??? */
+  _bfd_generic_set_reloc,
+  bfd_po_reloc_type_lookup,
+  bfd_po_reloc_name_lookup,
+
+  /* Write */
   _bfd_generic_set_arch_mach,
   bfd_po_set_section_contents,
-  BFD_JUMP_TABLE_LINK(_bfd_nolink), /* TODO */
+
+  /* Link */
+  bfd_po_sizeof_headers,
+  bfd_generic_get_relocated_section_contents,
+  bfd_generic_relax_section,
+  _bfd_generic_link_hash_table_create,
+  _bfd_generic_link_add_symbols,
+  _bfd_generic_link_just_syms, /* TODO: ??? */
+  _bfd_generic_copy_link_hash_symbol_type,
+  //_bfd_generic_final_link,
+  bfd_po_final_link,
+  _bfd_generic_link_split_section,
+  _bfd_generic_link_check_relocs, /* TODO */
+  bfd_generic_gc_sections,
+  bfd_generic_lookup_section_flags,
+  bfd_generic_merge_sections,
+  bfd_generic_is_group_section,
+  bfd_generic_discard_group,
+  _bfd_generic_section_already_linked,
+  bfd_generic_define_common_symbol,
+  _bfd_generic_link_hide_symbol,
+  bfd_generic_define_start_stop,
+
+  /* Dynamic */
   BFD_JUMP_TABLE_DYNAMIC(_bfd_nodynamic),
 
   NULL,

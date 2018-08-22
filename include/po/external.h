@@ -159,7 +159,7 @@ struct po_external_prdt {
 /*
  * IEWPRDT page reloc repeating section
  */
-struct po_external_prdt_page_relocs {
+struct po_external_prdt_page_header {
   unsigned char page_number[4];
   unsigned char segment_index[2];
   unsigned char checksum[4];
@@ -271,6 +271,8 @@ struct po_external_pgstb_entry {
 #define PRAT_BASE_SIZE                 (sizeof(struct po_external_prat))
 #define PRAT_SIZE(x,y)                 ROUND_UP(PRAT_BASE_SIZE + (x) * (y), 4)
 #define PRDT_BASE_SIZE                 (sizeof(struct po_external_prdt))
+#define PRDT_PAGE_HEADER_SIZE          (sizeof(struct po_external_prdt_page_header))
+#define PRDT_SIZE_NO_ENTRY(x)          (PRDT_BASE_SIZE + PRDT_PAGE_HEADER_SIZE * (x))
 
 #define LIDX_HEADER_BASE_SIZE          (sizeof(struct po_external_lidx))
 #define LIDX_HEADER_SIZE(x)            (LIDX_HEADER_BASE_SIZE + (x) * LIDX_HEADER_ENTRY_SIZE)

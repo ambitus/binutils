@@ -521,6 +521,7 @@ pdfdir = @pdfdir@
 prefix = @prefix@
 program_transform_name = @program_transform_name@
 psdir = @psdir@
+runstatedir = @runstatedir@
 sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
@@ -943,7 +944,8 @@ ALL_64_EMULATION_SOURCES = \
 	eelf_x86_64_sol2.c \
 	ehppa64linux.c \
 	ei386pep.c \
-	emmo.c
+	emmo.c \
+	epos390.c
 
 ALL_64_EMULATIONS = $(ALL_64_EMULATION_SOURCES:.c=.@OBJEXT@)
 ALL_EMUL_EXTRA_OFILES = \
@@ -1453,6 +1455,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epdp11.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epjelf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epjlelf.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/epos390.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eppclynx.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eppcmacos.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eppcpe.Po@am__quote@
@@ -3460,6 +3463,9 @@ emmo.c: $(srcdir)/emulparams/mmo.sh $(srcdir)/emultempl/mmix-elfnmmo.em \
   $(srcdir)/emultempl/generic.em $(srcdir)/emultempl/elf-generic.em \
   $(srcdir)/emultempl/mmo.em $(srcdir)/scripttempl/DWARF.sc \
   $(srcdir)/scripttempl/mmo.sc ${GEN_DEPENDS}
+
+epos390.c: $(srcdir)/emulparams/pos390.sh \
+	$(srcdir)/scripttempl/pos390.sc ${GEN_DEPENDS}
 
 check-DEJAGNU: site.exp
 	srcroot=`cd $(srcdir) && pwd`; export srcroot; \

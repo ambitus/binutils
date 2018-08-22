@@ -126,6 +126,21 @@ struct po_internal_prdt {
   bfd_size_type total_length;
 };
 
+struct po_internal_prdt_page_header {
+  unsigned int page_number;
+  unsigned short segment_index;
+  unsigned char checksum[4];
+  unsigned short count;
+  unsigned char flags;
+  unsigned char reference_id;
+  unsigned short count_six_byte;
+};
+
+struct po_internal_prdt_entry {
+  bfd_vma full_offset;
+  unsigned long addend;
+};
+
 struct po_internal_lidx {
   unsigned char fixed_eyecatcher[8];
   bfd_size_type length;
