@@ -463,8 +463,8 @@ bfd_po_finalize_header (bfd *abfd)
   /* Finalize PMAR */
   const bfd_size_type module_size = ROUND_UP(file_pos, 0x1000);
   po_pmar(abfd).virtual_storage_required = po_text_length(abfd);
-  po_pmar(abfd).main_entry_point_offset = 0;
-  po_pmar(abfd).this_entry_point_offset = 0;
+  po_pmar(abfd).main_entry_point_offset = bfd_get_start_address (abfd);
+  po_pmar(abfd).this_entry_point_offset = bfd_get_start_address (abfd);
 
   /* Finalize PMARL TODO */
   po_pmarl(abfd).program_length_no_gas = module_size / 0x1000;
@@ -742,7 +742,6 @@ bfd_po_mkobject (bfd *abfd)
   po_pmar(abfd).attr1 |= PMAR_ATTR1_EXECUTABLE;
   po_pmar(abfd).attr2 |= PMAR_ATTR2_BINDER_F_LEVEL_REQ;
   po_pmar(abfd).attr2 |= PMAR_ATTR2_ORG0;
-  po_pmar(abfd).attr2 |= PMAR_ATTR2_NO_RLD;
   // po_pmar(abfd).attr2 |= PMAR_ATTR2_NO_REPROCESS;
   po_pmar(abfd).attr3 |= PMAR_ATTR3_PMARL_PRESENT;
   po_pmar(abfd).attr4 |= PMAR_ATTR4_RMODE31;
@@ -842,7 +841,7 @@ bfd_po_initialize_prdt(bfd *abfd)
   for (unsigned i = 0; i < page_count; i ++)
   {
     po_prdt_page_headers(abfd)[i].page_number = i;
-    po_prdt_page_headers(abfd)[i].segment_index = 0; /* TODO */
+    po_prdt_page_headers(abfd)[i].segment_index = 1; /* TODO */
     po_prdt_page_headers(abfd)[i].count = 0;
     po_prdt_page_headers(abfd)[i].flags = 1;
     po_prdt_page_headers(abfd)[i].reference_id = 0;
