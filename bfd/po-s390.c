@@ -1060,8 +1060,14 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
             }
           }
       }
+      else if (p->type == bfd_data_link_order)
+        /* TODO: Is there anything else we need to do here?  */
+        continue;
       else
-        exit(1);
+        /* TODO: handle bfd_undefined_link_order,
+           bfd_section_reloc_link_order, and bfd_symbol_reloc_link_order
+           if needed.  */
+        BFD_FAIL ();
     }
   }
 
