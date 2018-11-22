@@ -164,9 +164,12 @@ struct po_external_prdt_page_header {
   unsigned char segment_index[2];
   unsigned char checksum[4];
   unsigned char reloc_count_total[2];
+};
+
+struct po_external_prdt_page_reloc_header {
   unsigned char flags;
-  unsigned char reference_id; /* TODO? */
-  unsigned char reloc_count_six_byte[2];
+  unsigned char reference_id;
+  unsigned char reloc_count[2];
 };
 
 struct po_external_prdt_six_byte_reloc {
@@ -174,10 +177,9 @@ struct po_external_prdt_six_byte_reloc {
   unsigned char value[4];
 };
 
-struct po_external_prdt_eight_byte_reloc {
-  unsigned char unknown[2];
+struct po_external_prdt_r_390_po_64_reloc {
   unsigned char offset[2];
-  unsigned char value[4];
+  unsigned char value[8];
 };
 
 /*
@@ -273,6 +275,7 @@ struct po_external_pgstb_entry {
 #define PRDT_BASE_SIZE                 (sizeof(struct po_external_prdt))
 #define PRDT_PAGE_HEADER_SIZE          (sizeof(struct po_external_prdt_page_header))
 #define PRDT_SIZE_NO_ENTRY(x)          (PRDT_BASE_SIZE + PRDT_PAGE_HEADER_SIZE * (x))
+#define PRDT_RELOC_HEADER_SIZE         (sizeof(struct po_external_prdt_page_reloc_header))
 
 #define LIDX_HEADER_BASE_SIZE          (sizeof(struct po_external_lidx))
 #define LIDX_HEADER_SIZE(x)            (LIDX_HEADER_BASE_SIZE + (x) * LIDX_HEADER_ENTRY_SIZE)
