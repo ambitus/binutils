@@ -131,12 +131,22 @@ struct po_internal_prdt_page_header {
   unsigned short segment_index;
   unsigned char checksum[4];
   unsigned short count;
+};
+
+struct po_internal_prdt_page_reloc_header {
   unsigned char flags;
   unsigned char reference_id;
-  unsigned short count_six_byte;
+  unsigned short reloc_count;
+};
+
+
+enum po_reloc_type {
+  R_390_PO_32,
+  R_390_PO_64
 };
 
 struct po_internal_prdt_entry {
+  enum po_reloc_type reloc_type; /* This is temporary before we enumerate */
   bfd_vma full_offset;
   unsigned long addend;
 };
