@@ -1017,6 +1017,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
             switch ((*parent)->howto->type)
             {
               case R_390_32:
+              case R_390_TLS_LE32:
                 {
                   /* TODO common symbols? */
                   long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
@@ -1033,6 +1034,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                   break;
                 }
               case R_390_64:
+              case R_390_TLS_LE64:
                 {
                   /* TODO common symbols? */
                   long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
