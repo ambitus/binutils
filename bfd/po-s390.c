@@ -786,17 +786,24 @@ static bfd_boolean
 bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unused)) sec_ptr sec, __attribute ((unused)) const void *contents, __attribute ((unused)) file_ptr offset, __attribute ((unused)) bfd_size_type len)
 {
   struct bfd_section *section;
-  bfd_vma full_size = 0;
   bfd_vma filepos = 0;
-
-  for (section = abfd->sections; section != NULL; section = section->next)
-    if (section->vma + section->size > full_size)
-      full_size = section->vma + section->size;
   filepos = sec->vma;
   sec->filepos = filepos;
-  printf("Output sect %s at %lu\n", sec->name, sec->filepos);
+
+  if (sec->flags & SEC_ALLOC)
+    printf("Output sect %s at %lu\n", sec->name, sec->filepos);
+  else {
+    printf("Warning: skipping debug section %s\n", sec->name);
+    return TRUE;
+  }
 
   if (po_section_contents(abfd) == NULL) {
+    bfd_vma full_size = 0;
+
+    for (section = abfd->sections; section != NULL; section = section->next)
+      if (section->vma + section->size > full_size)
+        full_size = section->vma + section->size;
+
     po_section_contents(abfd) = bfd_zmalloc(full_size);
     if (po_section_contents(abfd) == NULL)
       return FALSE;
