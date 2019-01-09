@@ -785,23 +785,14 @@ bfd_po_new_section_hook (bfd *abfd, sec_ptr sec)
 static bfd_boolean
 bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unused)) sec_ptr sec, __attribute ((unused)) const void *contents, __attribute ((unused)) file_ptr offset, __attribute ((unused)) bfd_size_type len)
 {
-  /* to hell with order TODO */
   struct bfd_section *section;
   bfd_vma full_size = 0;
   bfd_vma filepos = 0;
-  printf("Base filepos: %lu\n", filepos);
-  for (section = abfd->sections; section != sec; section = section->next) {
-    full_size += section->size;
-    filepos += section->size;
 
-    /* TODO: loosen requirements based on alignment_power */
-    full_size = BFD_ALIGN (full_size, (1 << section->alignment_power));
-    filepos = BFD_ALIGN (filepos, (1 << section->alignment_power));
-  }
-  for (; section != NULL; section = section->next) {
-    full_size += section->size;
-    full_size = BFD_ALIGN (full_size, (1 << section->alignment_power));
-  }
+  for (section = abfd->sections; section != NULL; section = section->next)
+    if (section->vma + section->size > full_size)
+      full_size = section->vma + section->size;
+  filepos = sec->vma;
   sec->filepos = filepos;
   printf("Output sect %s at %lu\n", sec->name, sec->filepos);
 
@@ -976,10 +967,8 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
   /* Compute text size TODO: right place? */
   po_text_length(abfd) = 0;
   for (struct bfd_section *section = abfd->sections; section != NULL; section = section->next)
-    {
-      po_text_length(abfd) += section->size;
-      po_text_length(abfd) = BFD_ALIGN(po_text_length(abfd), (1 << section->alignment_power)); /* TODO: restrict */
-    }
+    if (section->vma + section->size > po_text_length(abfd))
+      po_text_length(abfd) = section->vma + section->size;
 
   if (!bfd_po_initialize_prdt(abfd))
     return FALSE;
