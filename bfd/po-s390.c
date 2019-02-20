@@ -1010,10 +1010,10 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
             if (symbol == NULL)
               return FALSE;
 
+            /* TODO: rewrite in terms of VMA when we check guarantees */
             switch ((*parent)->howto->type)
             {
               case R_390_32:
-              case R_390_TLS_LE32:
                 {
                   /* TODO common symbols? */
                   long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
@@ -1030,7 +1030,6 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                   break;
                 }
               case R_390_64:
-              case R_390_TLS_LE64:
                 {
                   /* TODO common symbols? */
                   long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
@@ -1044,6 +1043,44 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                   };
                   if (!bfd_po_add_prdt_entry(abfd, &entry))
                     return FALSE;
+                  break;
+                }
+              case R_390_TLS_LE32:
+              case R_390_TLS_LE64:
+                {
+                  long full_addend = symbol->section->output_section->vma + symbol->section->output_offset;
+                  full_addend += symbol->value;
+
+                  /* TODO Right now this is a little hacked because of our linker-script TLS */
+                  asection *tls_section = NULL;
+                  for (tls_section = info->output_bfd->sections; tls_section != NULL; tls_section = tls_section->next) {
+                    if (strcmp(tls_section->name, ".tdatabss") == 0) {
+                      break;
+                    }
+                  }
+
+                  if (!tls_section) {
+                    _bfd_error_handler(_("TLS reloc without TLS section"));
+                    bfd_set_error (bfd_error_wrong_format);
+                    return FALSE;
+                  }
+
+                  long tls_offset = tls_section->vma;
+                  long delta = full_addend - tls_offset;
+                  bfd_vma octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
+
+                  char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->filepos + octets;
+
+                  // printf("Symbol: %s\n", symbol->name);
+                  // printf("full_addend: %lu\n", full_addend);
+                  // printf("tls_offset: %lu\n", tls_offset);
+                  // printf("Offset computed: %lu\n", delta);
+
+                  if ((*parent)->howto->type == R_390_TLS_LE64)
+                    bfd_put_64 (info->output_bfd, delta, dst_ptr);
+                  else
+                    bfd_put_32 (info->output_bfd, delta, dst_ptr);
+
                   break;
                 }
               default:
