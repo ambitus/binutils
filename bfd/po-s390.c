@@ -1016,10 +1016,17 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
               case R_390_32:
                 {
                   /* TODO common symbols? */
-                  long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
-                  full_addend += (*parent)->addend;
                   long octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
                   long final_offset = input_section->output_offset + output_section->filepos + octets;
+                  if ((symbol->flags & BSF_WEAK) && symbol->value == 0) {
+                    /* Zero out unresolved weak symbol */
+                    char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->filepos + octets;
+                    bfd_put_32 (info->output_bfd, 0, dst_ptr);
+                    printf("Emitting null\n");
+                    break;
+                  }
+                  long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
+                  full_addend += (*parent)->addend;
                   struct po_internal_prdt_entry entry = {
                     .full_offset = final_offset,
                     .addend = full_addend,
@@ -1032,10 +1039,17 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
               case R_390_64:
                 {
                   /* TODO common symbols? */
-                  long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
-                  full_addend += (*parent)->addend;
                   bfd_vma octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
                   long final_offset = input_section->output_offset + output_section->filepos + octets;
+                  if ((symbol->flags & BSF_WEAK) && symbol->value == 0) {
+                    /* Zero out unresolved weak symbol */
+                    char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->filepos + octets;
+                    bfd_put_64 (info->output_bfd, 0, dst_ptr);
+                    printf("Emitting null\n");
+                    break;
+                  }
+                  long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
+                  full_addend += (*parent)->addend;
                   struct po_internal_prdt_entry entry = {
                     .full_offset = final_offset,
                     .addend = full_addend,
