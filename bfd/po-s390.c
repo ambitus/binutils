@@ -983,6 +983,10 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
   /* Capture z/OS relocatable relocs */
   for (struct bfd_section *s = abfd->sections; s != NULL; s = s->next)
   {
+    /* If this section isn't getting loaded, skip it.  */
+    if ((s->flags & SEC_ALLOC) == 0)
+      continue;
+
     for (struct bfd_link_order *p = s->map_head.link_order; p != NULL; p = p->next)
     {
       if (p->type == bfd_indirect_link_order)
