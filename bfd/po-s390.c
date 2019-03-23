@@ -1030,7 +1030,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                     break;
                   }
                   long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
-                  full_addend += (*parent)->addend;
+                  full_addend += (*parent)->addend + symbol->value; /* TODO: condition value? */
                   struct po_internal_prdt_entry entry = {
                     .full_offset = final_offset,
                     .addend = full_addend,
@@ -1053,7 +1053,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                     break;
                   }
                   long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
-                  full_addend += (*parent)->addend;
+                  full_addend += (*parent)->addend + symbol->value; /* TODO: condition value? */
                   struct po_internal_prdt_entry entry = {
                     .full_offset = final_offset,
                     .addend = full_addend,
