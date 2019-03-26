@@ -785,19 +785,17 @@ bfd_po_new_section_hook (bfd *abfd, sec_ptr sec)
 static bfd_boolean
 bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unused)) sec_ptr sec, __attribute ((unused)) const void *contents, __attribute ((unused)) file_ptr offset, __attribute ((unused)) bfd_size_type len)
 {
-  struct bfd_section *section;
-  bfd_vma filepos = 0;
-  filepos = sec->vma;
-  sec->filepos = filepos;
+  /* z/OS TODO: Is LMA more appropriate here? Probably.  */
 
   if (sec->flags & SEC_ALLOC)
-    printf("Output sect %s at %lu\n", sec->name, sec->filepos);
+    printf("Output sect %s at %lu\n", sec->name, sec->vma);
   else {
     printf("Warning: skipping debug section %s\n", sec->name);
     return TRUE;
   }
 
   if (po_section_contents(abfd) == NULL) {
+    struct bfd_section *section;
     bfd_vma full_size = 0;
 
     for (section = abfd->sections; section != NULL; section = section->next)
@@ -809,7 +807,7 @@ bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unu
       return FALSE;
   }
 
-  memcpy(po_section_contents(abfd) + sec->filepos + offset, contents, len);
+  memcpy(po_section_contents(abfd) + sec->vma + offset, contents, len);
 
   return TRUE;
 }
@@ -1021,15 +1019,16 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                 {
                   /* TODO common symbols? */
                   long octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
-                  long final_offset = input_section->output_offset + output_section->filepos + octets;
+		  /* z/OS TODO: Should this be LMA?  */
+                  long final_offset = input_section->output_offset + output_section->vma + octets;
                   if ((symbol->flags & BSF_WEAK) && symbol->value == 0) {
                     /* Zero out unresolved weak symbol */
-                    char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->filepos + octets;
+                    char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->vma + octets;
                     bfd_put_32 (info->output_bfd, 0, dst_ptr);
                     printf("Emitting null\n");
                     break;
                   }
-                  long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
+                  long full_addend = symbol->section->output_section->vma + symbol->section->output_offset;
                   full_addend += (*parent)->addend + symbol->value; /* TODO: condition value? */
                   struct po_internal_prdt_entry entry = {
                     .full_offset = final_offset,
@@ -1044,15 +1043,16 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                 {
                   /* TODO common symbols? */
                   bfd_vma octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
-                  long final_offset = input_section->output_offset + output_section->filepos + octets;
+		  /* z/OS TODO: Should this be LMA?  */
+                  long final_offset = input_section->output_offset + output_section->vma + octets;
                   if ((symbol->flags & BSF_WEAK) && symbol->value == 0) {
                     /* Zero out unresolved weak symbol */
-                    char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->filepos + octets;
+                    char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->vma + octets;
                     bfd_put_64 (info->output_bfd, 0, dst_ptr);
                     printf("Emitting null\n");
                     break;
                   }
-                  long full_addend = symbol->section->output_section->filepos + symbol->section->output_offset;
+                  long full_addend = symbol->section->output_section->vma + symbol->section->output_offset;
                   full_addend += (*parent)->addend + symbol->value; /* TODO: condition value? */
                   struct po_internal_prdt_entry entry = {
                     .full_offset = final_offset,
@@ -1087,7 +1087,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                   long delta = full_addend - tls_offset;
                   bfd_vma octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
 
-                  char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->filepos + octets;
+                  char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->vma + octets;
 
                   // printf("Symbol: %s\n", symbol->name);
                   // printf("full_addend: %lu\n", full_addend);
