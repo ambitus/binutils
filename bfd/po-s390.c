@@ -815,9 +815,18 @@ bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unu
 static bfd_boolean
 bfd_po_mkobject (bfd *abfd)
 {
-  abfd->tdata.any = bfd_zalloc (abfd, sizeof (struct po_obj_tdata));
-  if (abfd->tdata.any == NULL)
+  /* Allocate and initialize the target-specific tdata.  */
+  po_tdata (abfd) =
+    (struct po_obj_tdata *) bfd_zalloc (abfd, sizeof (struct po_obj_tdata));
+
+  if (po_tdata (abfd) == NULL)
     return FALSE;
+
+  /* Initialize all parts of tdata to zeros.  */
+  memset (po_tdata (abfd), 0, sizeof (struct po_obj_tdata));
+
+  po_sizes_computed (abfd) = FALSE;
+  po_headers_computed (abfd) = FALSE;
 
   /* Initialize internal header */
   memcpy(po_header(abfd).fixed_eyecatcher, eyecatcher_plmh, sizeof(eyecatcher_plmh));
@@ -962,18 +971,124 @@ bfd_po_add_prdt_entry(bfd *abfd, struct po_internal_prdt_entry *entry)
   return TRUE;
 }
 
+/* Calculate the size of all sections.  */
+
+static bfd_boolean
+po_calculate_section_sizes (bfd *abfd, struct bfd_link_info *info)
+{
+  asection *s;
+  struct bfd_link_order *p;
+  arelent **reloc_vector = NULL;
+
+  if (po_sizes_computed (abfd))
+    return TRUE;
+
+  /* Most sections are okay, however we may need to add data to some
+     sections, and possibly create a few sections from scratch.  */
+
+  /* z/OS TODO: We should only do this traversal in one place.  */
+  for (s = abfd->sections; s != NULL; s = s->next)
+    {
+      /* If this section isn't getting loaded, skip it.
+	 z/OS TODO: We shouldn't need to do this, take it out and see if it
+	 works.  */
+      if ((s->flags & SEC_ALLOC) == 0)
+	continue;
+
+      for (p = s->map_head.link_order; p != NULL; p = p->next)
+	if (p->type == bfd_indirect_link_order)
+	  {
+	    long relsize, relcount;
+	    arelent **parent;
+	    asection *sec = p->u.indirect.section;
+
+	    /* Don't check relocs for the following cases, either because
+	       they indicate that we shouldn't be processing the section
+	       or that the section has no relocs.  */
+	    if ((sec->flags & SEC_RELOC) == 0
+		|| (sec->flags & SEC_EXCLUDE) != 0
+		|| sec->reloc_count == 0
+		|| ((info->strip == strip_all || info->strip == strip_debugger)
+		    && (sec->flags & SEC_DEBUGGING) != 0)
+		|| bfd_is_abs_section (sec->output_section))
+	      continue;
+
+	    relsize = bfd_get_reloc_upper_bound (sec->owner, sec);
+	    if (relsize < 0)
+	      return FALSE;
+
+	    reloc_vector = (arelent **) bfd_malloc (relsize);
+	    if (reloc_vector == NULL)
+	      return FALSE;
+
+	    relcount =
+	      bfd_canonicalize_reloc (sec->owner, sec, reloc_vector,
+				      _bfd_generic_link_get_symbols (sec->owner));
+	    if (relcount < 0)
+	      goto error_return;
+
+	    if (relcount == 0)
+	      continue;
+
+	    for (parent = reloc_vector; *parent != NULL; parent++)
+	      {
+		switch ((*parent)->howto->type)
+		  {
+		  case R_390_TLS_IEENT:
+		    /* z/OS TODO: do a hash table lookup or something on
+		       symbols here, register which ones we need GOT slots
+		       for. Create such a slot. Later, when we are
+		       resolving the relocs, look up the slot to use.  */
+		    break;
+		  default:
+		    break;
+		  }
+	      }
+
+	    free (reloc_vector);
+	  }
+    }
+
+  /* z/OS TODO: for each symbol that we registered above, generate a
+     GOT entry. We can even fill it in now.  */
+
+  /* Compute text size TODO: right place?
+     z/OS TODO: rename this, it's module size not text size.  */
+  po_text_length(abfd) = 0;
+  for (s = abfd->sections; s != NULL; s = s->next)
+    if (s->vma + s->size > po_text_length (abfd))
+      po_text_length(abfd) = s->vma + s->size;
+
+  po_sizes_computed (abfd) = TRUE;
+  return TRUE;
+
+ error_return:
+  if (reloc_vector != NULL)
+    free (reloc_vector);
+  return FALSE;
+}
+
 static bfd_boolean
 bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
 {
+  /* This target is executable-only, relocatable links with -r make no
+     sense for us.  */
+  if (bfd_link_relocatable (info))
+    {
+      bfd_set_error (bfd_error_invalid_operation);
+      return FALSE;
+    }
+
+  BFD_ASSERT (!po_sizes_computed (abfd));
+  BFD_ASSERT (!po_headers_computed (abfd));
+
   /* Perform standard link */
   if (!_bfd_generic_final_link(abfd, info))
     return FALSE;
 
-  /* Compute text size TODO: right place? */
-  po_text_length(abfd) = 0;
-  for (struct bfd_section *section = abfd->sections; section != NULL; section = section->next)
-    if (section->vma + section->size > po_text_length(abfd))
-      po_text_length(abfd) = section->vma + section->size;
+  /* Calculate section sizes.  */
+  if (!po_calculate_section_sizes (abfd, info))
+    return FALSE;
 
   if (!bfd_po_initialize_prdt(abfd))
     return FALSE;
@@ -981,7 +1096,9 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
   /* Capture z/OS relocatable relocs */
   for (struct bfd_section *s = abfd->sections; s != NULL; s = s->next)
   {
-    /* If this section isn't getting loaded, skip it.  */
+    /* If this section isn't getting loaded, skip it.
+       z/OS TODO: We shouldn't need to do this, take it out and see if it
+       works.  */
     if ((s->flags & SEC_ALLOC) == 0)
       continue;
 
@@ -992,6 +1109,18 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
         bfd *input_bfd = p->u.indirect.section->owner;
         asection *input_section = p->u.indirect.section;
         asection *output_section = p->u.indirect.section->output_section;
+
+	/* Don't check relocs for the following cases, either because
+	   they indicate that we shouldn't be processing the section
+	   or that the section has no relocs.  */
+	if ((input_section->flags & SEC_RELOC) == 0
+	    || (input_section->flags & SEC_EXCLUDE) != 0
+	    || input_section->reloc_count == 0
+	    || ((info->strip == strip_all || info->strip == strip_debugger)
+		&& (input_section->flags & SEC_DEBUGGING) != 0)
+	    || bfd_is_abs_section (input_section->output_section))
+	  continue;
+
         long reloc_size = bfd_get_reloc_upper_bound (input_bfd, input_section);
         if (reloc_size < 0)
           return FALSE;
@@ -1003,7 +1132,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
         long reloc_count = bfd_canonicalize_reloc (input_bfd, input_section, reloc_vector, _bfd_generic_link_get_symbols(input_bfd));
 
         if(reloc_count < 0)
-          return FALSE; /* TODO: memory leak */
+	  goto bad_reloc;
 
         if (reloc_count > 0)
           for (arelent **parent = reloc_vector; *parent != NULL; parent ++)
@@ -1063,41 +1192,61 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                     return FALSE;
                   break;
                 }
-              case R_390_TLS_LE32:
-              case R_390_TLS_LE64:
-                {
-                  long full_addend = symbol->section->output_section->vma + symbol->section->output_offset;
-                  full_addend += symbol->value;
+	      case R_390_TLS_IEENT:
+		/* z/OS TODO: We need to do some stuff here.  */
+		break;
+	      case R_390_TLS_LE32:
+	      case R_390_TLS_LE64:
+		{
+		  bfd_signed_vma tls_offset;
+		  asection *tls_section;
+		  char *dst_ptr;
 
-                  /* TODO Right now this is a little hacked because of our linker-script TLS */
-                  asection *tls_section = NULL;
-                  for (tls_section = info->output_bfd->sections; tls_section != NULL; tls_section = tls_section->next) {
-                    if (strcmp(tls_section->name, ".tdatabss") == 0) {
-                      break;
-                    }
-                  }
+		  /* Find the start of the combined TLS section.
+		     z/OS TODO: This will need to be changed when we
+		     remove the .tdatabss stuff from the linker script.
+		     Look for .tdata and .tbss separately, process should
+		     be similar for .tdata symbols, .tbss symbols should
+		     add the size of .tdata to the output offset.  */
+		  tls_section = symbol->section->output_section;
+		  BFD_ASSERT (strcmp (tls_section->name, ".tdatabss") == 0);
 
-                  if (!tls_section) {
-                    _bfd_error_handler(_("TLS reloc without TLS section"));
-                    bfd_set_error (bfd_error_wrong_format);
-                    return FALSE;
-                  }
+		  /* The symbol should resolve to the negated offset from
+		     the start of the TLS template (combined .tdata and
+		     .tbss sections) to the symbol.
+		     Note: symbol->value seems to be the symbol's offset
+		     into its input section.  */
+		  tls_offset = (symbol->section->output_offset
+				+ symbol->value
+				- symbol->section->output_section->size);
 
-                  long tls_offset = tls_section->vma;
-                  long delta = full_addend - tls_offset;
-                  bfd_vma octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
+		  if (tls_section == NULL)
+		    {
+		      _bfd_error_handler (_("TLS reloc without TLS section"));
+		      bfd_set_error (bfd_error_wrong_format);
+		      return FALSE;
+		    }
 
-                  char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->vma + octets;
+		  /* z/OS TODO: It would be better if we could access
+		     contents through output_section->contents.  */
+		  dst_ptr = (po_section_contents (abfd)
+			     + input_section->output_offset
+			     + output_section->vma + (*parent)->address);
 
-                  // printf("Symbol: %s\n", symbol->name);
-                  // printf("full_addend: %lu\n", full_addend);
-                  // printf("tls_offset: %lu\n", tls_offset);
-                  // printf("Offset computed: %lu\n", delta);
-
-                  if ((*parent)->howto->type == R_390_TLS_LE64)
-                    bfd_put_64 (info->output_bfd, delta, dst_ptr);
-                  else
-                    bfd_put_32 (info->output_bfd, delta, dst_ptr);
+		  switch ((*parent)->howto->type)
+		    {
+		    case R_390_TLS_LE64:
+		      bfd_put_64 (info->output_bfd,
+				  (bfd_vma) tls_offset, dst_ptr);
+		      break;
+		    case R_390_TLS_LE32:
+		      /* z/OS TODO: check for overflow here.  */
+		      bfd_put_32 (info->output_bfd,
+				  (bfd_vma) tls_offset, dst_ptr);
+		      break;
+		    default:
+		      goto bad_reloc;
+		    }
 
                   break;
                 }
@@ -1107,11 +1256,15 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
                   /* These are fine */
                   break;
                 }
+	    bad_reloc:
+		if (reloc_vector)
+		  free (reloc_vector);
                 _bfd_error_handler(_("Unsupported reloc type %d"), (*parent)->howto->type);
                 bfd_set_error (bfd_error_wrong_format);
                 return FALSE;
             }
           }
+	free (reloc_vector);
       }
       else if (p->type == bfd_data_link_order)
         /* TODO: Is there anything else we need to do here?  */

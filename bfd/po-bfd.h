@@ -51,6 +51,7 @@
 #define po_prat_pad_bytes(bfd)             (po_tdata(bfd) -> prat_pad_bytes)
 #define po_headers_computed(bfd)           (po_tdata(bfd) -> headers_computed)
 #define po_section_contents(bfd)           (po_tdata(bfd) -> section_contents)
+#define po_sizes_computed(bfd)		(po_tdata(bfd)->sizes_computed)
 
 struct po_obj_tdata {
   /* High level internal structures */
@@ -81,6 +82,7 @@ struct po_obj_tdata {
   unsigned int                              text_pad_words;
   unsigned int                              prat_pad_bytes;
   bfd_boolean                               headers_computed;
+  bfd_boolean                               sizes_computed;
 };
 
 #endif
