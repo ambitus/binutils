@@ -1062,7 +1062,7 @@ po_calculate_section_sizes (bfd *abfd, struct bfd_link_info *info)
   po_sizes_computed (abfd) = TRUE;
   return TRUE;
 
- error_return:
+error_return:
   if (reloc_vector != NULL)
     free (reloc_vector);
   return FALSE;
@@ -1071,6 +1071,9 @@ po_calculate_section_sizes (bfd *abfd, struct bfd_link_info *info)
 static bfd_boolean
 bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
 {
+  asection *s;
+  arelent **reloc_vector = NULL;
+
   /* This target is executable-only, relocatable links with -r make no
      sense for us.  */
   if (bfd_link_relocatable (info))
@@ -1094,191 +1097,197 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
     return FALSE;
 
   /* Capture z/OS relocatable relocs */
-  for (struct bfd_section *s = abfd->sections; s != NULL; s = s->next)
-  {
-    /* If this section isn't getting loaded, skip it.
-       z/OS TODO: We shouldn't need to do this, take it out and see if it
-       works.  */
-    if ((s->flags & SEC_ALLOC) == 0)
-      continue;
-
-    for (struct bfd_link_order *p = s->map_head.link_order; p != NULL; p = p->next)
+  for (s = abfd->sections; s != NULL; s = s->next)
     {
-      if (p->type == bfd_indirect_link_order)
-      {
-        bfd *input_bfd = p->u.indirect.section->owner;
-        asection *input_section = p->u.indirect.section;
-        asection *output_section = p->u.indirect.section->output_section;
+      struct bfd_link_order *p;
+      /* If this section isn't getting loaded, skip it.
+	 z/OS TODO: We shouldn't need to do this, take it out and see if
+	 it works.  */
+      if ((s->flags & SEC_ALLOC) == 0)
+	continue;
 
-	/* Don't check relocs for the following cases, either because
-	   they indicate that we shouldn't be processing the section
-	   or that the section has no relocs.  */
-	if ((input_section->flags & SEC_RELOC) == 0
-	    || (input_section->flags & SEC_EXCLUDE) != 0
-	    || input_section->reloc_count == 0
-	    || ((info->strip == strip_all || info->strip == strip_debugger)
-		&& (input_section->flags & SEC_DEBUGGING) != 0)
-	    || bfd_is_abs_section (input_section->output_section))
-	  continue;
+      for (p = s->map_head.link_order; p != NULL; p = p->next)
+	{
+	  if (p->type == bfd_indirect_link_order)
+	    {
+	      long reloc_size, reloc_count;
+	      arelent **parent;
+	      bfd *input_bfd = p->u.indirect.section->owner;
+	      asection *input_section = p->u.indirect.section;
 
-        long reloc_size = bfd_get_reloc_upper_bound (input_bfd, input_section);
-        if (reloc_size < 0)
-          return FALSE;
+	      /* Don't check relocs for the following cases, either because
+		 they indicate that we shouldn't be processing the section
+		 or that the section has no relocs.  */
+	      if ((input_section->flags & SEC_RELOC) == 0
+		  || (input_section->flags & SEC_EXCLUDE) != 0
+		  || input_section->reloc_count == 0
+		  || ((info->strip == strip_all || info->strip == strip_debugger)
+		      && (input_section->flags & SEC_DEBUGGING) != 0)
+		  || bfd_is_abs_section (input_section->output_section))
+		continue;
 
-        arelent **reloc_vector = (arelent **) bfd_malloc(reloc_size);
-        if (reloc_vector == NULL)
-          return FALSE;
+	      reloc_size = bfd_get_reloc_upper_bound (input_bfd, input_section);
+	      if (reloc_size < 0)
+		return FALSE;
 
-        long reloc_count = bfd_canonicalize_reloc (input_bfd, input_section, reloc_vector, _bfd_generic_link_get_symbols(input_bfd));
+	      if (reloc_size == 0)
+		continue;
 
-        if(reloc_count < 0)
-	  goto bad_reloc;
+	      reloc_vector = (arelent **) bfd_malloc (reloc_size);
+	      if (reloc_vector == NULL)
+		return FALSE;
 
-        if (reloc_count > 0)
-          for (arelent **parent = reloc_vector; *parent != NULL; parent ++)
-          {
-            asymbol *symbol = *(*parent)->sym_ptr_ptr;
-            if (symbol == NULL)
-              return FALSE;
+	      reloc_count =
+		bfd_canonicalize_reloc (input_bfd, input_section, reloc_vector,
+					_bfd_generic_link_get_symbols (input_bfd));
 
-            /* TODO: rewrite in terms of VMA when we check guarantees */
-            switch ((*parent)->howto->type)
-            {
-              case R_390_32:
-                {
-                  /* TODO common symbols? */
-                  long octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
-		  /* z/OS TODO: Should this be LMA?  */
-                  long final_offset = input_section->output_offset + output_section->vma + octets;
-                  if ((symbol->flags & BSF_WEAK) && symbol->value == 0) {
-                    /* Zero out unresolved weak symbol */
-                    char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->vma + octets;
-                    bfd_put_32 (info->output_bfd, 0, dst_ptr);
-                    printf("Emitting null\n");
-                    break;
-                  }
-                  long full_addend = symbol->section->output_section->vma + symbol->section->output_offset;
-                  full_addend += (*parent)->addend + symbol->value; /* TODO: condition value? */
-                  struct po_internal_prdt_entry entry = {
-                    .full_offset = final_offset,
-                    .addend = full_addend,
-                    .reloc_type = R_390_PO_32
-                  };
-                  if (!bfd_po_add_prdt_entry(abfd, &entry))
-                    return FALSE;
-                  break;
-                }
-              case R_390_64:
-                {
-                  /* TODO common symbols? */
-                  bfd_vma octets = (*parent)->address * bfd_octets_per_byte (input_bfd);
-		  /* z/OS TODO: Should this be LMA?  */
-                  long final_offset = input_section->output_offset + output_section->vma + octets;
-                  if ((symbol->flags & BSF_WEAK) && symbol->value == 0) {
-                    /* Zero out unresolved weak symbol */
-                    char *dst_ptr = po_section_contents(abfd) + input_section->output_offset + output_section->vma + octets;
-                    bfd_put_64 (info->output_bfd, 0, dst_ptr);
-                    printf("Emitting null\n");
-                    break;
-                  }
-                  long full_addend = symbol->section->output_section->vma + symbol->section->output_offset;
-                  full_addend += (*parent)->addend + symbol->value; /* TODO: condition value? */
-                  struct po_internal_prdt_entry entry = {
-                    .full_offset = final_offset,
-                    .addend = full_addend,
-                    .reloc_type = R_390_PO_64
-                  };
-                  if (!bfd_po_add_prdt_entry(abfd, &entry))
-                    return FALSE;
-                  break;
-                }
-	      case R_390_TLS_IEENT:
-		/* z/OS TODO: We need to do some stuff here.  */
-		break;
-	      case R_390_TLS_LE32:
-	      case R_390_TLS_LE64:
+	      if (reloc_count < 0)
+		goto bad_reloc;
+
+	      if (reloc_count == 0)
 		{
-		  bfd_signed_vma tls_offset;
-		  asection *tls_section;
+		  free (reloc_vector);
+		  continue;
+		}
+
+	      for (parent = reloc_vector; *parent != NULL; parent++)
+		{
+		  bfd_vma full_offset, addend;
 		  char *dst_ptr;
-
-		  /* Find the start of the combined TLS section.
-		     z/OS TODO: This will need to be changed when we
-		     remove the .tdatabss stuff from the linker script.
-		     Look for .tdata and .tbss separately, process should
-		     be similar for .tdata symbols, .tbss symbols should
-		     add the size of .tdata to the output offset.  */
-		  tls_section = symbol->section->output_section;
-		  BFD_ASSERT (strcmp (tls_section->name, ".tdatabss") == 0);
-
-		  /* The symbol should resolve to the negated offset from
-		     the start of the TLS template (combined .tdata and
-		     .tbss sections) to the symbol.
-		     Note: symbol->value seems to be the symbol's offset
-		     into its input section.  */
-		  tls_offset = (symbol->section->output_offset
-				+ symbol->value
-				- symbol->section->output_section->size);
-
-		  if (tls_section == NULL)
-		    {
-		      _bfd_error_handler (_("TLS reloc without TLS section"));
-		      bfd_set_error (bfd_error_wrong_format);
-		      return FALSE;
-		    }
+		  asymbol *symbol = *(*parent)->sym_ptr_ptr;
+		  if (symbol == NULL)
+		    goto error_return;
 
 		  /* z/OS TODO: It would be better if we could access
 		     contents through output_section->contents.  */
 		  dst_ptr = (po_section_contents (abfd)
 			     + input_section->output_offset
-			     + output_section->vma + (*parent)->address);
+			     + s->vma + (*parent)->address);
 
+		  /* TODO: rewrite in terms of VMA when we check guarantees */
 		  switch ((*parent)->howto->type)
 		    {
-		    case R_390_TLS_LE64:
-		      bfd_put_64 (info->output_bfd,
-				  (bfd_vma) tls_offset, dst_ptr);
+		    case R_390_32:
+		    case R_390_64:
+		      {
+			/* z/OS TODO: common symbols? */
+
+			/* A symbol is unresolved if it belongs to the
+			   undefined section.  */
+			if ((symbol->flags & BSF_WEAK) != 0
+			    && bfd_is_und_section (symbol->section))
+			  {
+			    /* Zero out unresolved weak symbol */
+			    if ((*parent)->howto->type == R_390_64)
+			      bfd_put_64 (info->output_bfd, 0, dst_ptr);
+			    else
+			      bfd_put_32 (info->output_bfd, 0, dst_ptr);
+			    printf ("Emitting null\n");
+			    break;
+			  }
+
+			full_offset = (input_section->output_offset + s->vma
+				       + (*parent)->address);
+
+			/* TODO: condition value? */
+			addend = (symbol->section->output_section->vma
+				  + symbol->section->output_offset
+				  + (*parent)->addend + symbol->value);
+
+			struct po_internal_prdt_entry entry = {
+			  .full_offset = full_offset,
+			  .addend = addend,
+			  .reloc_type = ((*parent)->howto->type == R_390_64
+					 ? R_390_PO_64 : R_390_PO_32)
+			};
+			if (!bfd_po_add_prdt_entry (abfd, &entry))
+			  goto error_return;
+			break;
+		      }
+		    case R_390_TLS_IEENT:
+		      /* z/OS TODO: We need to do some stuff here.  */
 		      break;
 		    case R_390_TLS_LE32:
-		      /* z/OS TODO: check for overflow here.  */
-		      bfd_put_32 (info->output_bfd,
-				  (bfd_vma) tls_offset, dst_ptr);
-		      break;
+		    case R_390_TLS_LE64:
+		      {
+			bfd_signed_vma tls_offset;
+			asection *tls_section;
+
+			/* Find the start of the combined TLS section.
+			   z/OS TODO: This will need to be changed when we
+			   remove the .tdatabss stuff from the linker script.
+			   Look for .tdata and .tbss separately, process should
+			   be similar for .tdata symbols, .tbss symbols should
+			   add the size of .tdata to the output offset.  */
+			tls_section = symbol->section->output_section;
+			BFD_ASSERT (strcmp (tls_section->name, ".tdatabss") == 0);
+
+			/* The symbol should resolve to the negated offset from
+			   the start of the TLS template (combined .tdata and
+			   .tbss sections) to the symbol.
+			   Note: symbol->value seems to be the symbol's offset
+			   into its input section.  */
+			tls_offset = (symbol->section->output_offset
+				      + symbol->value
+				      - symbol->section->output_section->size);
+
+			if (tls_section == NULL)
+			  {
+			    _bfd_error_handler
+			      (_("TLS reloc without TLS section"));
+			    bfd_set_error (bfd_error_wrong_format);
+			    return FALSE;
+			  }
+
+			switch ((*parent)->howto->type)
+			  {
+			  case R_390_TLS_LE64:
+			    bfd_put_64 (info->output_bfd,
+					(bfd_vma) tls_offset, dst_ptr);
+			    break;
+			  case R_390_TLS_LE32:
+			    /* z/OS TODO: check for overflow here.  */
+			    bfd_put_32 (info->output_bfd,
+					(bfd_vma) tls_offset, dst_ptr);
+			    break;
+			  default:
+			    goto bad_reloc;
+			  }
+
+			break;
+		      }
 		    default:
-		      goto bad_reloc;
+		      if ((*parent)->howto->pc_relative)
+			{
+			  /* These are fine */
+			  break;
+			}
+		    bad_reloc:
+		      _bfd_error_handler
+			(_("Unsupported reloc type %d"), (*parent)->howto->type);
+		      bfd_set_error (bfd_error_wrong_format);
+		    error_return:
+		      if (reloc_vector)
+			free (reloc_vector);
+		      return FALSE;
 		    }
-
-                  break;
-                }
-              default:
-                if ((*parent)->howto->pc_relative)
-                {
-                  /* These are fine */
-                  break;
-                }
-	    bad_reloc:
-		if (reloc_vector)
-		  free (reloc_vector);
-                _bfd_error_handler(_("Unsupported reloc type %d"), (*parent)->howto->type);
-                bfd_set_error (bfd_error_wrong_format);
-                return FALSE;
-            }
-          }
-	free (reloc_vector);
-      }
-      else if (p->type == bfd_data_link_order)
-        /* TODO: Is there anything else we need to do here?  */
-        continue;
-      else
-        /* TODO: handle bfd_undefined_link_order,
-           bfd_section_reloc_link_order, and bfd_symbol_reloc_link_order
-           if needed.  */
-        BFD_FAIL ();
+		}
+	      free (reloc_vector);
+	    }
+	  else if (p->type == bfd_data_link_order)
+	    /* TODO: Is there anything else we need to do here?  */
+	    continue;
+	  else
+	    /* TODO: handle bfd_undefined_link_order,
+	       bfd_section_reloc_link_order, and bfd_symbol_reloc_link_order
+	       if needed.  */
+	    BFD_FAIL ();
+	}
     }
-  }
 
-  return TRUE; 
+  return TRUE;
 }
+
 /*
 static bfd_boolean
 bfd_po_indirect_link_order (bfd *output_bfd, struct bfd_link_info *info, asection *output_section, struct bfd_link_order *link_order, bfd_boolean generic_linker)
