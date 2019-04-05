@@ -1142,7 +1142,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
 					_bfd_generic_link_get_symbols (input_bfd));
 
 	      if (reloc_count < 0)
-		goto bad_reloc;
+		goto error_return;
 
 	      if (reloc_count == 0)
 		{
