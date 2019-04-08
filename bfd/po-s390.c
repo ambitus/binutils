@@ -783,31 +783,29 @@ bfd_po_new_section_hook (bfd *abfd, sec_ptr sec)
 }
 
 static bfd_boolean
-bfd_po_set_section_contents (__attribute ((unused)) bfd *abfd, __attribute ((unused)) sec_ptr sec, __attribute ((unused)) const void *contents, __attribute ((unused)) file_ptr offset, __attribute ((unused)) bfd_size_type len)
+bfd_po_set_section_contents (bfd *abfd ATTRIBUTE_UNUSED, sec_ptr sec,
+			     const void *contents ATTRIBUTE_UNUSED,
+			     file_ptr offset ATTRIBUTE_UNUSED,
+			     bfd_size_type len ATTRIBUTE_UNUSED)
 {
-  /* z/OS TODO: Is LMA more appropriate here? Probably.  */
-
-  if (sec->flags & SEC_ALLOC)
-    printf("Output sect %s at %lu\n", sec->name, sec->vma);
-  else {
-    printf("Warning: skipping debug section %s\n", sec->name);
+  if ((sec->flags & SEC_ALLOC) == 0)
     return TRUE;
-  }
 
-  if (po_section_contents(abfd) == NULL) {
-    struct bfd_section *section;
-    bfd_vma full_size = 0;
+  if (po_section_contents (abfd) == NULL)
+    {
+      struct bfd_section *s;
+      bfd_vma full_size = 0;
 
-    for (section = abfd->sections; section != NULL; section = section->next)
-      if (section->vma + section->size > full_size)
-        full_size = section->vma + section->size;
+      for (s = abfd->sections; s != NULL; s = s->next)
+	if (s->vma + s->size > full_size)
+	  full_size = s->vma + s->size;
 
-    po_section_contents(abfd) = bfd_zmalloc(full_size);
-    if (po_section_contents(abfd) == NULL)
-      return FALSE;
-  }
+      po_section_contents (abfd) = bfd_zmalloc (full_size);
+      if (po_section_contents (abfd) == NULL)
+	return FALSE;
+    }
 
-  memcpy(po_section_contents(abfd) + sec->vma + offset, contents, len);
+  memcpy (po_section_contents (abfd) + sec->vma + offset, contents, len);
 
   return TRUE;
 }
@@ -1182,7 +1180,6 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
 			      bfd_put_64 (info->output_bfd, 0, dst_ptr);
 			    else
 			      bfd_put_32 (info->output_bfd, 0, dst_ptr);
-			    printf ("Emitting null\n");
 			    break;
 			  }
 
