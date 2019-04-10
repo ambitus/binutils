@@ -52,6 +52,7 @@
 #define po_headers_computed(bfd)           (po_tdata(bfd) -> headers_computed)
 #define po_section_contents(bfd)           (po_tdata(bfd) -> section_contents)
 #define po_sizes_computed(bfd)		(po_tdata(bfd)->sizes_computed)
+#define po_tbss(bfd)			(po_tdata (bfd)->tbss)
 
 struct po_obj_tdata {
   /* High level internal structures */
@@ -83,6 +84,9 @@ struct po_obj_tdata {
   unsigned int                              prat_pad_bytes;
   bfd_boolean                               headers_computed;
   bfd_boolean                               sizes_computed;
+
+  /* TLS template information.  */
+  asection				   *tbss;
 };
 
 #endif

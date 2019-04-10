@@ -788,6 +788,10 @@ bfd_po_set_section_contents (bfd *abfd ATTRIBUTE_UNUSED, sec_ptr sec,
 			     file_ptr offset ATTRIBUTE_UNUSED,
 			     bfd_size_type len ATTRIBUTE_UNUSED)
 {
+  /*printf ("(name, VMA, LMA, out_off, size): %s, %lu, %lu, %lu, %lu\n",
+	  sec->name, sec->vma, sec->lma, sec->output_offset, sec->size);
+  */
+
   if ((sec->flags & SEC_ALLOC) == 0)
     return TRUE;
 
@@ -987,6 +991,11 @@ po_calculate_section_sizes (bfd *abfd, struct bfd_link_info *info)
   /* z/OS TODO: We should only do this traversal in one place.  */
   for (s = abfd->sections; s != NULL; s = s->next)
     {
+      /* Initialize the tbss shortcut.  */
+      if (po_tbss (abfd) == NULL
+	  && strcmp (s->name, ".tbss") == 0)
+	po_tbss (abfd) = s;
+
       /* If this section isn't getting loaded, skip it.
 	 z/OS TODO: We shouldn't need to do this, take it out and see if it
 	 works.  */
@@ -1162,6 +1171,19 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
 			     + input_section->output_offset
 			     + s->vma + (*parent)->address);
 
+		  /* z/OS TODO: Important: Sometimes we get relocations
+		     for the absolute section here with no howto and I
+		     don't know why, or what that means. For now, ignore
+		     them. This may be breaking things.  */
+		  if (!(*parent)->howto->type
+		      && bfd_is_abs_section (symbol->section))
+		    {
+		      /*
+		      printf ("FIXME: *ABS* section relocation\n");
+		      */
+		      continue;
+		    }
+
 		  /* TODO: rewrite in terms of VMA when we check guarantees */
 		  switch ((*parent)->howto->type)
 		    {
@@ -1208,33 +1230,32 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
 		    case R_390_TLS_LE64:
 		      {
 			bfd_signed_vma tls_offset;
-			asection *tls_section;
+			asection *out_sec = symbol->section->output_section;
 
-			/* Find the start of the combined TLS section.
-			   z/OS TODO: This will need to be changed when we
-			   remove the .tdatabss stuff from the linker script.
-			   Look for .tdata and .tbss separately, process should
-			   be similar for .tdata symbols, .tbss symbols should
-			   add the size of .tdata to the output offset.  */
-			tls_section = symbol->section->output_section;
-			BFD_ASSERT (strcmp (tls_section->name, ".tdatabss") == 0);
+			/* The symbol should resolve to the offset from
+			   one past the end of the TLS template (the
+			   contiguous .tdata and .tbss sections) to the
+			   entry in that section for this relocation.
 
-			/* The symbol should resolve to the negated offset from
-			   the start of the TLS template (combined .tdata and
-			   .tbss sections) to the symbol.
-			   Note: symbol->value seems to be the symbol's offset
-			   into its input section.  */
+			   Note: symbol->value seems to be the symbol's
+			   offset into its input section.  */
 			tls_offset = (symbol->section->output_offset
 				      + symbol->value
-				      - symbol->section->output_section->size);
+				      - out_sec->size);
 
-			if (tls_section == NULL)
+			/* If this is a .tdata symbol and there is a .tbss
+			   section, we need to add in the negated size of
+			   .tbss.  */
+			if (po_tbss (abfd) != NULL
+			    && po_tbss (abfd) != out_sec)
 			  {
-			    _bfd_error_handler
-			      (_("TLS reloc without TLS section"));
-			    bfd_set_error (bfd_error_wrong_format);
-			    return FALSE;
+			    BFD_ASSERT (strcmp (out_sec->name, ".tdata") == 0);
+			    tls_offset -= po_tbss (abfd)->size;
 			  }
+			else
+			  BFD_ASSERT (strcmp (out_sec->name, ".tbss") == 0);
+
+			BFD_ASSERT (tls_offset < 0);
 
 			switch ((*parent)->howto->type)
 			  {
@@ -1294,7 +1315,7 @@ bfd_po_indirect_link_order (bfd *output_bfd, struct bfd_link_info *info, asectio
 
 /* TODO disallow relocatable (incremental) */
 const bfd_target s390_po_vec = {
-  "po-s390",
+  "po64-s390",
   bfd_target_unknown_flavour,
   BFD_ENDIAN_BIG,
   BFD_ENDIAN_BIG,

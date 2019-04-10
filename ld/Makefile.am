@@ -459,7 +459,7 @@ ALL_64_EMULATION_SOURCES = \
 	ehppa64linux.c \
 	ei386pep.c \
 	emmo.c \
-	epos390.c
+	epo64_s390.c
 
 ALL_64_EMULATIONS = $(ALL_64_EMULATION_SOURCES:.c=.@OBJEXT@)
 
@@ -1861,8 +1861,9 @@ emmo.c: $(srcdir)/emulparams/mmo.sh $(srcdir)/emultempl/mmix-elfnmmo.em \
   $(srcdir)/emultempl/mmo.em $(srcdir)/scripttempl/DWARF.sc \
   $(srcdir)/scripttempl/mmo.sc ${GEN_DEPENDS}
 
-epos390.c: $(srcdir)/emulparams/pos390.sh \
-	$(srcdir)/scripttempl/pos390.sc ${GEN_DEPENDS}
+epo64_s390.c: $(srcdir)/emulparams/po64_s390.sh \
+  $(srcdir)/scripttempl/po64_s390.sc \
+  $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
 
 
 # We need this for automake to use YLWRAP.
