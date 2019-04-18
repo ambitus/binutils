@@ -120,8 +120,7 @@ struct po_internal_prat {
   unsigned int total_entries;
   unsigned short single_entry_length;
   unsigned short unknown_flags;  /* This is kind of a mystery.
-				    Seems like it must be 8 to
-				    get large PRATs working.  */
+				    We have seen 0x0000 and 0x0008.  */
 };
 
 struct po_internal_prdt {
@@ -136,6 +135,10 @@ struct po_internal_prdt_page_header {
   unsigned short segment_index;
   unsigned char checksum[4];
   unsigned short count;
+
+  /* The page has a reloc in the first 4 bytes and should have
+     its checksum set to 'noch' in EBCDIC.  */
+  bfd_boolean no_checksum;
 };
 
 struct po_internal_prdt_page_reloc_header {

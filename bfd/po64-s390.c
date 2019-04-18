@@ -75,6 +75,7 @@ static const char eyecatcher_prdt[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xD9, 0xC4, 0xE3
 static const char eyecatcher_lidx[] = { 0xC9, 0xC5, 0xE6, 0xD3, 0xC9, 0xC4, 0xE7, 0x40 };
 static const char eyecatcher_psegm[] = { 0xC9, 0xC5, 0xE6, 0xD7, 0xE2, 0xC5, 0xC7, 0xD4 };
 static const char text_pad[] = { 0xC9, 0xC5, 0xE6, 0xD7 };
+static const char no_checksum_val[] = { 0x95, 0x96, 0x83, 0x88 };  /* 'noch' in EBCDIC.  */
 
 static void
 convert_iso88591_to_ibm1047 (char *ebcdic, char *ascii, bfd_size_type length)
@@ -388,7 +389,8 @@ bfd_po_finalize_header (bfd *abfd)
 
       /* TODO: this could cause out of bounds */
       BFD_ASSERT (po_text_length (abfd) >= i * 0x1000 + 4);
-      memcpy (po_prdt_page_headers (abfd)[i].checksum, page, 4);
+      if (!po_prdt_page_headers (abfd)[i].no_checksum)
+	memcpy (po_prdt_page_headers (abfd)[i].checksum, page, 4);
       po_prat_entries (abfd)[i] = prdt_pos;
       bfd_vma full_entry_size = 0;
       bfd_boolean found32 = FALSE, found64 = FALSE;
@@ -974,6 +976,7 @@ bfd_po_initialize_prdt(bfd *abfd)
     po_prdt_page_headers(abfd)[i].page_number = i;
     po_prdt_page_headers(abfd)[i].segment_index = 1; /* TODO */
     po_prdt_page_headers(abfd)[i].count = 0;
+    po_prdt_page_headers (abfd)[i].no_checksum = FALSE;
   }
 
   po_prdt_entries(abfd) = bfd_zmalloc2(page_count, sizeof(struct po_internal_prdt_entry *));
@@ -986,19 +989,30 @@ bfd_po_initialize_prdt(bfd *abfd)
 static bfd_boolean
 bfd_po_add_prdt_entry(bfd *abfd, struct po_internal_prdt_entry *entry)
 {
-  unsigned page_number = entry->full_offset / 0x1000;
-  unsigned entry_count = po_prdt_page_headers(abfd)[page_number].count;
+  unsigned int page_number = entry->full_offset / 0x1000;
+  unsigned int entry_count = po_prdt_page_headers(abfd)[page_number].count;
   if (entry_count == 0 || !(entry_count & (entry_count - 1)))
   {
     /* reallocation required */
-    const unsigned new_size = entry_count ? entry_count * 2 : 1;
-    po_prdt_entries(abfd)[page_number] = bfd_realloc2(po_prdt_entries(abfd)[page_number], new_size, sizeof(struct po_internal_prdt_entry));
+    unsigned int new_size = entry_count ? entry_count * 2 : 1;
+    po_prdt_entries (abfd)[page_number] =
+      bfd_realloc2 (po_prdt_entries (abfd)[page_number],
+		    new_size, sizeof (struct po_internal_prdt_entry));
     if (po_prdt_entries(abfd)[page_number] == NULL)
       return FALSE;
   }
 
   po_prdt_entries(abfd)[page_number][entry_count] = *entry;
   po_prdt_page_headers(abfd)[page_number].count ++;
+
+  /* If a reloc intersects with the checksum area,
+     the checksum needs to be set to a special value.  */
+  if ((entry->full_offset & 0xFFF) < 4)
+    {
+      po_prdt_page_headers (abfd)[page_number].no_checksum = TRUE;
+      memcpy (po_prdt_page_headers (abfd)[page_number].checksum,
+	      no_checksum_val, 4);
+    }
 
   return TRUE;
 }
