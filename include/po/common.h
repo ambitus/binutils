@@ -22,6 +22,12 @@
 #ifndef _PO_COMMON_H
 #define _PO_COMMON_H
 
+/* The required alignment of a reloc group header.  */
+#define RELOC_GROUP_HEADER_ALIGN 4
+
+/* Size of a PRAT entry.  */
+#define PRAT_ENTRY_SIZE 4
+
 #define PLMH_VERSION                   0x04
 
 #define PLMH_REC_TYPE_PO_NAME_HEADER   0x0001
@@ -138,4 +144,3 @@
 #define PSEGM_UNKNOWN                  0x08
 
 #endif
-

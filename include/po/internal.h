@@ -22,6 +22,8 @@
 #ifndef _PO_INTERNAL_H
 #define _PO_INTERNAL_H
 
+#include "common.h"
+
 struct po_internal_plmh;
 struct po_internal_header_rec_decl;
 struct po_internal_pmar;
@@ -117,6 +119,9 @@ struct po_internal_prat {
   unsigned int occupied_entries;
   unsigned int total_entries;
   unsigned short single_entry_length;
+  unsigned short unknown_flags;  /* This is kind of a mystery.
+				    Seems like it must be 8 to
+				    get large PRATs working.  */
 };
 
 struct po_internal_prdt {
@@ -178,4 +183,3 @@ struct po_internal_lidx_entry {
 };
 
 #endif
-

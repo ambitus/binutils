@@ -22,6 +22,8 @@
 #ifndef _PO_EXTERNAL_H
 #define _PO_EXTERNAL_H
 
+#include "common.h"
+
 /*
  * IEWPLMH: header
  */
@@ -142,7 +144,7 @@ struct po_external_prat {
   unsigned char occupied_entries[4]; /* TODO */
   unsigned char total_entries[4]; /* TODO */
   unsigned char single_entry_length[2]; /* TODO */
-  unsigned char unknown1[2]; /* TODO */
+  unsigned char unknown_flags[2]; /* TODO */
 };
 
 /*
@@ -256,6 +258,13 @@ struct po_external_pgstb_entry {
  *  - PMAP
  */
 
+/* The six byte entries we generate for 32-bit relocations are the
+   most space-inefficient ones we can currently generate, so we
+   should never be attempting to generate PRDT entries larger than
+   what would be required for a whole page worth of them for any given
+   page.  */
+#define MAX_PAGE_RELOCS_SIZE	       (0x1000 * 6 / 4)
+
 #define ROUND_UP(x,y)                  (((x) + (y) - 1) / (y) * (y))
 #define PLMH_BASE_SIZE                 (sizeof(struct po_external_plmh))
 #define PLMH_SIZE(x)                   (PLMH_BASE_SIZE + (x) * HEADER_REC_DECL_SIZE)
@@ -271,7 +280,8 @@ struct po_external_pgstb_entry {
 #define PMARL_SIZE                     (sizeof(struct po_external_pmarl))
 
 #define PRAT_BASE_SIZE                 (sizeof(struct po_external_prat))
-#define PRAT_SIZE(x,y)                 ROUND_UP(PRAT_BASE_SIZE + (x) * (y), 4)
+#define PRAT_SIZE(x)		       ROUND_UP (PRAT_BASE_SIZE + (x) * (PRAT_ENTRY_SIZE), \
+						 PRAT_ENTRY_SIZE)
 #define PRDT_BASE_SIZE                 (sizeof(struct po_external_prdt))
 #define PRDT_PAGE_HEADER_SIZE          (sizeof(struct po_external_prdt_page_header))
 #define PRDT_SIZE_NO_ENTRY(x)          (PRDT_BASE_SIZE + PRDT_PAGE_HEADER_SIZE * (x))

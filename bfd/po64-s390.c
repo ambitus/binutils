@@ -191,6 +191,7 @@ bfd_po_swap_prat_out (bfd *abfd, struct po_internal_prat *src, struct po_externa
   H_PUT_32 (abfd, src->occupied_entries, &dst->occupied_entries);
   H_PUT_32 (abfd, src->total_entries, &dst->total_entries);
   H_PUT_16 (abfd, src->single_entry_length, &dst->single_entry_length);
+  H_PUT_16 (abfd, src->unknown_flags, &dst->unknown_flags);
 }
 
 static void
@@ -357,35 +358,39 @@ bfd_po_finalize_header (bfd *abfd)
   if (po_prat_entries(abfd) == NULL)
     return FALSE;
 
-  po_prat(abfd).length = PRAT_SIZE(pages_needed + 1, 2); /* TODO rlds? */
-  po_prat(abfd).occupied_entries = 0;
-  po_prat(abfd).total_entries = pages_needed;
-  po_prat(abfd).single_entry_length = 2;
-  po_pmarl(abfd).prat_length = PRAT_BASE_SIZE;
-  po_pmarl(abfd).prat_offset = po_prat(abfd).length;
-  po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
+  po_prat (abfd).length = PRAT_SIZE (pages_needed + 1); /* TODO rlds? */
+  po_prat (abfd).occupied_entries = 0;
+  po_prat (abfd).total_entries = pages_needed;
+  po_prat (abfd).single_entry_length = PRAT_ENTRY_SIZE;
+  po_prat (abfd).unknown_flags = 0x00;
+  po_pmarl (abfd).prat_length = PRAT_BASE_SIZE;
+  po_pmarl (abfd).prat_offset = po_prat (abfd).length;
+  po_rec_decls (abfd)[rec_num++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_PRAT,
     .rec_offset = file_pos,
     .rec_length = po_prat(abfd).length
   };
 
   /* Advance past PRAT */
-  unsigned int prat_size = PRAT_SIZE(pages_needed + 1, 2);
-  po_prat_pad_bytes(abfd) = prat_size - (PRAT_BASE_SIZE + (pages_needed + 1) * 2);
-  file_pos += prat_size;
+  bfd_vma base = (PRAT_BASE_SIZE + (pages_needed + 1) * PRAT_ENTRY_SIZE);
+  po_prat_pad_bytes (abfd) = po_prat (abfd).length - base;
+  file_pos += po_prat (abfd).length;
 
   /* Finalize PRDT */
   const bfd_vma prdt_offset = file_pos;
   po_pmarl(abfd).prdt_offset = prdt_offset;
   unsigned int prdt_pos = PRDT_BASE_SIZE;
-  for (unsigned i = 0; i < pages_needed; i ++)
+  for (unsigned int i = 0; i < pages_needed; i++)
   {
     const unsigned int entry_count = po_prdt_page_headers(abfd)[i].count;
     if (entry_count > 0) {
+      char *page = (po_section_contents (abfd) + i * 0x1000);
+
       /* TODO: this could cause out of bounds */
-      memcpy(po_prdt_page_headers(abfd)[i].checksum, po_section_contents(abfd) + i * 0x1000, 4);
-      po_prat_entries(abfd)[i] = prdt_pos;
-      unsigned long full_entry_size = 0;
+      BFD_ASSERT (po_text_length (abfd) >= i * 0x1000 + 4);
+      memcpy (po_prdt_page_headers (abfd)[i].checksum, page, 4);
+      po_prat_entries (abfd)[i] = prdt_pos;
+      bfd_vma full_entry_size = 0;
       bfd_boolean found32 = FALSE, found64 = FALSE;
       for (unsigned i2 = 0; i2 < entry_count; i2 ++)
       {
@@ -406,7 +411,9 @@ bfd_po_finalize_header (bfd *abfd)
       if (found64)
         full_entry_size += PRDT_RELOC_HEADER_SIZE;
 
-      const unsigned int page_entry_size = ROUND_UP(full_entry_size, 4);
+      BFD_ASSERT (full_entry_size <= MAX_PAGE_RELOCS_SIZE);
+
+      bfd_vma page_entry_size = ROUND_UP (full_entry_size, PRAT_ENTRY_SIZE);
       po_prdt(abfd).total_length += page_entry_size;
       file_pos += PRDT_PAGE_HEADER_SIZE + page_entry_size;
       prdt_pos += PRDT_PAGE_HEADER_SIZE + page_entry_size;
@@ -473,6 +480,11 @@ bfd_po_finalize_header (bfd *abfd)
   for (unsigned i = 0; i < remainder_words; i ++)
     file_pos += sizeof(text_pad);
   po_text_pad_words(abfd) = remainder_words;
+
+  /* z/OS TODO: align here.  */
+  /*
+  file_pos = (file_pos + 0x1000 - 1) & ~(0x1000 - 1);
+  */
 
   /* Leave space for text TODO */
   po_text_offset(abfd) = file_pos;
@@ -659,11 +671,11 @@ bfd_po_output_header (bfd *abfd)
   if (bfd_bwrite(prat, PRAT_BASE_SIZE, abfd) != PRAT_BASE_SIZE)
     goto fail_free;
 
-  char prat_entry[2];
+  char prat_entry[4];
   for (unsigned i = 0; i < po_prat(abfd).total_entries + 1; i ++) {
-    unsigned short entry = po_prat_entries(abfd)[i];
-    H_PUT_16 (abfd, entry, prat_entry);
-    if (bfd_bwrite(prat_entry, 2, abfd) != 2)
+    unsigned int entry = po_prat_entries(abfd)[i];
+    H_PUT_32 (abfd, entry, prat_entry);
+    if (bfd_bwrite(prat_entry, 4, abfd) != 4)
       goto fail_free;
   }
   char prat_pad[8];
@@ -676,7 +688,7 @@ bfd_po_output_header (bfd *abfd)
   if (bfd_bwrite(prdt, PRDT_BASE_SIZE, abfd) != PRDT_BASE_SIZE)
     goto fail_free;
 
-  char prdt_entry[8];
+  char prdt_entry[10];
   char prdt_page_header[PRDT_PAGE_HEADER_SIZE];
   char prdt_reloc_header[PRDT_RELOC_HEADER_SIZE]; /* TODO: style */
   for (unsigned i = 0; i < po_prat(abfd).total_entries; i ++) {
@@ -703,7 +715,11 @@ bfd_po_output_header (bfd *abfd)
             break;
         }
       }
-      const unsigned int page_entry_size = ROUND_UP(full_entry_size, 4); /* TODO */
+
+      BFD_ASSERT (full_entry_size % 2 == 0);
+      BFD_ASSERT (full_entry_size <= MAX_PAGE_RELOCS_SIZE);
+
+      bfd_vma page_entry_size = ROUND_UP (full_entry_size, PRAT_ENTRY_SIZE); /* TODO */
       if (found32) {
         struct po_internal_prdt_page_reloc_header page_header = (struct po_internal_prdt_page_reloc_header) {
           .flags = 0x01,
@@ -714,7 +730,7 @@ bfd_po_output_header (bfd *abfd)
         if (bfd_bwrite(prdt_reloc_header, PRDT_RELOC_HEADER_SIZE, abfd) != PRDT_RELOC_HEADER_SIZE)
           goto fail_free;
 
-        for (unsigned i2 = 0; i2 < entry_count; i2 ++)
+        for (unsigned int i2 = 0; i2 < entry_count; i2 ++)
         {
           struct po_internal_prdt_entry entry = po_prdt_entries(abfd)[i][i2];
           entry.full_offset &= 0x0fff;
@@ -736,7 +752,7 @@ bfd_po_output_header (bfd *abfd)
         if (bfd_bwrite(prdt_reloc_header, PRDT_RELOC_HEADER_SIZE, abfd) != PRDT_RELOC_HEADER_SIZE)
           goto fail_free;
 
-        for (unsigned i2 = 0; i2 < entry_count; i2 ++)
+        for (unsigned int i2 = 0; i2 < entry_count; i2 ++)
         {
           struct po_internal_prdt_entry entry = po_prdt_entries(abfd)[i][i2];
           entry.full_offset &= 0x0fff;
@@ -748,7 +764,7 @@ bfd_po_output_header (bfd *abfd)
         }
       }
 
-      const unsigned pad = page_entry_size - full_entry_size;
+      unsigned int pad = page_entry_size - full_entry_size;
       char zero_pad[8];
       memset(zero_pad, 0, sizeof(zero_pad));
       if (bfd_bwrite(zero_pad, pad, abfd) != pad)
@@ -759,9 +775,23 @@ bfd_po_output_header (bfd *abfd)
   if (! bfd_po_output_header_lidx (abfd))
     goto fail_free;
 
-  for (unsigned i = 0; i < po_text_pad_words(abfd); i ++)
+  for (unsigned int i = 0; i < po_text_pad_words(abfd); i ++)
     if (bfd_bwrite(text_pad, sizeof(text_pad), abfd) != sizeof(text_pad))
       goto fail_free;
+
+  /*
+  file_ptr pad;
+  file_ptr file_pos = bfd_tell (abfd);
+  if (file_pos == -1)
+    return FALSE;
+
+  pad = 0x1000 - (file_pos & 0xFFF);
+  BFD_ASSERT (pad >= 0);
+
+  char *zeros[0x1000] = {0};
+  if (pad > 0 && bfd_bwrite (zeros, (bfd_size_type)pad, abfd) != (bfd_size_type)pad)
+    return FALSE;
+  */
 
   return TRUE;
 
@@ -1061,10 +1091,10 @@ po_calculate_section_sizes (bfd *abfd, struct bfd_link_info *info)
 
   /* Compute text size TODO: right place?
      z/OS TODO: rename this, it's module size not text size.  */
-  po_text_length(abfd) = 0;
+  po_text_length (abfd) = 0;
   for (s = abfd->sections; s != NULL; s = s->next)
     if (s->vma + s->size > po_text_length (abfd))
-      po_text_length(abfd) = s->vma + s->size;
+      po_text_length (abfd) = s->vma + s->size;
 
   po_sizes_computed (abfd) = TRUE;
   return TRUE;
@@ -1178,9 +1208,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
 		  if (!(*parent)->howto->type
 		      && bfd_is_abs_section (symbol->section))
 		    {
-		      /*
 		      printf ("FIXME: *ABS* section relocation\n");
-		      */
 		      continue;
 		    }
 
