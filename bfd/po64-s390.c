@@ -27,6 +27,9 @@
 #include "po-bfd.h"
 #include "elf/s390.h"
 
+#define write_ext(buf, abfd)					\
+  (bfd_bwrite ((buf), sizeof (*buf), abfd) != sizeof (*buf))
+
 __attribute__((unused))
 static
 const unsigned char ibm1047_to_iso88591[256] = {
@@ -166,14 +169,18 @@ bfd_po_swap_pmarl_out (bfd *abfd, struct po_internal_pmarl *src, struct po_exter
 }
 
 static void
-bfd_po_swap_po_name_header_out (bfd *abfd, struct po_internal_po_name_header *src, struct po_external_po_name_header *dst)
+bfd_po_swap_po_name_header_out (bfd *abfd,
+				struct po_internal_po_name_header *src,
+				struct po_external_po_name_header *dst)
 {
   memset(dst, 0, sizeof(*dst));
   H_PUT_32 (abfd, src->alias_count, &dst->alias_count);
 }
 
 static void
-bfd_po_swap_po_name_header_entry_out (bfd *abfd, struct po_internal_po_name_header_entry *src, struct po_external_po_name_header_entry *dst)
+bfd_po_swap_po_name_header_entry_out (bfd *abfd,
+				      struct po_internal_po_name_header_entry *src,
+				      struct po_external_po_name_header_entry *dst)
 {
   memset(dst, 0, sizeof(*dst));
   H_PUT_32 (abfd, src->alias_offset, &dst->alias_offset);
@@ -183,7 +190,9 @@ bfd_po_swap_po_name_header_entry_out (bfd *abfd, struct po_internal_po_name_head
 }
 
 static void
-bfd_po_swap_prat_out (bfd *abfd, struct po_internal_prat *src, struct po_external_prat *dst)
+bfd_po_swap_prat_out (bfd *abfd,
+		      struct po_internal_prat *src,
+		      struct po_external_prat *dst)
 {
   memset(dst, 0, sizeof(*dst));
   memcpy(dst->fixed_eyecatcher, src->fixed_eyecatcher, sizeof(dst->fixed_eyecatcher));
@@ -196,7 +205,9 @@ bfd_po_swap_prat_out (bfd *abfd, struct po_internal_prat *src, struct po_externa
 }
 
 static void
-bfd_po_swap_prdt_out (bfd *abfd, struct po_internal_prdt *src, struct po_external_prdt *dst)
+bfd_po_swap_prdt_out (bfd *abfd,
+		      struct po_internal_prdt *src,
+		      struct po_external_prdt *dst)
 {
   memset(dst, 0, sizeof(*dst));
   memcpy(dst->fixed_eyecatcher, src->fixed_eyecatcher, sizeof(dst->fixed_eyecatcher));
@@ -206,7 +217,9 @@ bfd_po_swap_prdt_out (bfd *abfd, struct po_internal_prdt *src, struct po_externa
 }
 
 static void
-bfd_po_swap_prdt_page_header_out (bfd *abfd, struct po_internal_prdt_page_header *src, struct po_external_prdt_page_header *dst)
+po_swap_prdt_page_header_out (bfd *abfd,
+			      struct po_internal_prdt_page_header *src,
+			      struct po_external_prdt_page_header *dst)
 {
   memset(dst, 0, sizeof(*dst));
   H_PUT_32 (abfd, src->page_number, &dst->page_number);
@@ -216,29 +229,53 @@ bfd_po_swap_prdt_page_header_out (bfd *abfd, struct po_internal_prdt_page_header
 }
 
 static void
-bfd_po_swap_prdt_page_reloc_header_out (bfd *abfd, struct po_internal_prdt_page_reloc_header *src, struct po_external_prdt_page_reloc_header *dst)
+po_swap_reloc_32_out (bfd *abfd,
+		      const struct po_internal_relent *src,
+		      struct po_external_reloc_32 *dst)
 {
-  dst->flags = src->flags;
-  dst->reference_id = src->reference_id;
-  H_PUT_16 (abfd, src->reloc_count, &dst->reloc_count);
-}
-
-static void
-bfd_po_swap_prdt_six_byte_reloc_out (bfd *abfd, const struct po_internal_prdt_entry *src, struct po_external_prdt_six_byte_reloc *dst)
-{
-  H_PUT_16 (abfd, src->full_offset, &dst->offset);
+  /* We only keep the offset from the start of the page.  */
+  unsigned short page_offset = src->offset & 0x0fff;
+  H_PUT_16 (abfd, page_offset, &dst->offset);
   H_PUT_32 (abfd, src->addend, &dst->value);
 }
 
 static void
-bfd_po_swap_prdt_r_390_po_64_reloc_out (bfd *abfd, const struct po_internal_prdt_entry *src, struct po_external_prdt_r_390_po_64_reloc *dst)
+po_swap_reloc_32_ext_out (bfd *abfd,
+			  const struct po_internal_relent *src,
+			  struct po_external_reloc_32_ext *dst)
 {
-  H_PUT_16 (abfd, src->full_offset, &dst->offset);
+  unsigned short page_offset = src->offset & 0x0fff;
+  dst->type = (unsigned char) src->type;
+  dst->flags = src->flags;
+  H_PUT_16 (abfd, page_offset, &dst->offset);
+  H_PUT_32 (abfd, src->addend, &dst->value);
+}
+
+static void
+po_swap_reloc_64_out (bfd *abfd,
+		      const struct po_internal_relent *src,
+		      struct po_external_reloc_64 *dst)
+{
+  unsigned short page_offset = src->offset & 0x0fff;
+  H_PUT_16 (abfd, page_offset, &dst->offset);
   H_PUT_64 (abfd, src->addend, &dst->value);
 }
 
 static void
-bfd_po_swap_lidx_out (bfd *abfd, struct po_internal_lidx *src, struct po_external_lidx *dst)
+po_swap_reloc_64_ext_out (bfd *abfd,
+			  const struct po_internal_relent *src,
+			  struct po_external_reloc_64_ext *dst)
+{
+  unsigned short page_offset = src->offset & 0x0fff;
+  dst->type = (unsigned char) src->type;
+  dst->flags = src->flags;
+  H_PUT_16 (abfd, page_offset, &dst->offset);
+  H_PUT_64 (abfd, src->addend, &dst->value);
+}
+
+static void
+bfd_po_swap_lidx_out (bfd *abfd, struct po_internal_lidx *src,
+		      struct po_external_lidx *dst)
 {
   memset(dst, 0, sizeof(*dst));
   memcpy(dst->fixed_eyecatcher, src->fixed_eyecatcher, sizeof(dst->fixed_eyecatcher));
@@ -248,7 +285,8 @@ bfd_po_swap_lidx_out (bfd *abfd, struct po_internal_lidx *src, struct po_externa
 }
 
 static void
-bfd_po_swap_lidx_entry_out (bfd *abfd, struct po_internal_lidx_entry *src, struct po_external_lidx_entry *dst)
+bfd_po_swap_lidx_entry_out (bfd *abfd, struct po_internal_lidx_entry *src,
+			    struct po_external_lidx_entry *dst)
 {
   memset(dst, 0, sizeof(*dst));
   dst->type = src->type;
@@ -257,7 +295,8 @@ bfd_po_swap_lidx_entry_out (bfd *abfd, struct po_internal_lidx_entry *src, struc
 }
 
 static void
-bfd_po_swap_psegm_out (bfd *abfd, struct po_internal_psegm *src, struct po_external_psegm *dst)
+bfd_po_swap_psegm_out (bfd *abfd, struct po_internal_psegm *src,
+		       struct po_external_psegm *dst)
 {
   memset(dst, 0, sizeof(*dst));
   memcpy(dst->fixed_eyecatcher, src->fixed_eyecatcher, sizeof(dst->fixed_eyecatcher));
@@ -267,12 +306,25 @@ bfd_po_swap_psegm_out (bfd *abfd, struct po_internal_psegm *src, struct po_exter
 }
 
 static void
-bfd_po_swap_psegm_entry_out (bfd *abfd, struct po_internal_psegm_entry *src, struct po_external_psegm_entry *dst)
+bfd_po_swap_psegm_entry_out (bfd *abfd,
+			     struct po_internal_psegm_entry *src,
+			     struct po_external_psegm_entry *dst)
 {
   memset(dst, 0, sizeof(*dst));
   H_PUT_32 (abfd, src->length, &dst->length);
   H_PUT_32 (abfd, src->offset, &dst->offset);
   dst->flags = src->flags;
+}
+
+static void
+init_reloc_header (bfd *abfd,
+		   enum po_reloc_type type, unsigned char ref_id,
+		   unsigned short relcount,
+		   struct po_external_prdt_reloc_header *header)
+{
+  header->type = (unsigned char) type;
+  header->reference_id = ref_id;
+  bfd_h_put_16 (abfd, relcount, &header->reloc_count);
 }
 
 /*
@@ -353,19 +405,9 @@ bfd_po_finalize_header (bfd *abfd)
   /* Advance past PMAR and PMARL */
   file_pos += PMAR_SIZE + PMARL_SIZE;
 
-  /* Finalize PRAT */
-  const unsigned int pages_needed = ROUND_UP(po_text_length(abfd), 0x1000) / 0x1000;
-  po_prat_entries(abfd) = bfd_zmalloc2(sizeof(bfd_vma), pages_needed + 1);
-  if (po_prat_entries(abfd) == NULL)
-    return FALSE;
+  unsigned int pages_needed =
+    ROUND_UP (po_text_length (abfd), 0x1000) / 0x1000;
 
-  po_prat (abfd).length = PRAT_SIZE (pages_needed + 1); /* TODO rlds? */
-  po_prat (abfd).occupied_entries = 0;
-  po_prat (abfd).total_entries = pages_needed;
-  po_prat (abfd).single_entry_length = PRAT_ENTRY_SIZE;
-  po_prat (abfd).unknown_flags = 0x00;
-  po_pmarl (abfd).prat_length = PRAT_BASE_SIZE;
-  po_pmarl (abfd).prat_offset = po_prat (abfd).length;
   po_rec_decls (abfd)[rec_num++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_PRAT,
     .rec_offset = file_pos,
@@ -377,67 +419,76 @@ bfd_po_finalize_header (bfd *abfd)
   po_prat_pad_bytes (abfd) = po_prat (abfd).length - base;
   file_pos += po_prat (abfd).length;
 
-  /* Finalize PRDT */
+  /* Calculate the size and position of the PRDT.
+     There's a header for each page, then a generic header for PO_32
+     and PO_64, in addition to the actual entries for both. PO_32_EXT
+     and PO_64_EXT have no headers.  */
   const bfd_vma prdt_offset = file_pos;
-  po_pmarl(abfd).prdt_offset = prdt_offset;
   unsigned int prdt_pos = PRDT_BASE_SIZE;
-  for (unsigned int i = 0; i < pages_needed; i++)
-  {
-    const unsigned int entry_count = po_prdt_page_headers(abfd)[i].count;
-    if (entry_count > 0) {
-      char *page = (po_section_contents (abfd) + i * 0x1000);
+  po_pmarl(abfd).prdt_offset = prdt_offset;
+  file_pos += PRDT_BASE_SIZE;
 
-      /* TODO: this could cause out of bounds */
-      BFD_ASSERT (po_text_length (abfd) >= i * 0x1000 + 4);
-      if (!po_prdt_page_headers (abfd)[i].no_checksum)
-	memcpy (po_prdt_page_headers (abfd)[i].checksum, page, 4);
-      po_prat_entries (abfd)[i] = prdt_pos;
-      bfd_vma full_entry_size = 0;
+  for (unsigned int page = 0; page < pages_needed; page++)
+    {
+      char *start;
+      unsigned int entries = po_prdt_page_headers (abfd)[page].count;
+      bfd_vma page_rel_size = PRDT_PAGE_HEADER_SIZE;
       bfd_boolean found32 = FALSE, found64 = FALSE;
-      for (unsigned i2 = 0; i2 < entry_count; i2 ++)
-      {
-        const struct po_internal_prdt_entry *entry = &po_prdt_entries(abfd)[i][i2];
-        switch (entry->reloc_type) {
-          case R_390_PO_32:
-            full_entry_size += 6;
-            found32 = TRUE;
-            break;
-          case R_390_PO_64:
-            full_entry_size += sizeof(struct po_external_prdt_r_390_po_64_reloc);
-            found64 = TRUE;
-            break;
-        }
-      }
+
+      if (entries == 0)
+	{
+	  po_prat_entries (abfd)[page] = 0;
+	  continue;
+	}
+      start = (po_section_contents (abfd) + page * 0x1000);
+
+      if (!po_prdt_page_headers (abfd)[page].no_checksum)
+	memcpy (po_prdt_page_headers (abfd)[page].checksum, start, 4);
+      po_prat_entries (abfd)[page] = prdt_pos;
+
+      for (unsigned int ent_num = 0; ent_num < entries; ent_num++)
+	{
+	  switch (po_prdt_entries (abfd)[page][ent_num].type)
+	    {
+	    case PO_32:
+	      page_rel_size += 6;
+	      found32 = TRUE;
+	      break;
+	    case PO_32_EXT:
+	      page_rel_size += 8;
+	      break;
+	    case PO_64:
+	      page_rel_size += 10;
+	      found64 = TRUE;
+	      break;
+	    case PO_64_EXT:
+	      page_rel_size += 12;
+	      break;
+	    }
+	}
       if (found32)
-        full_entry_size += PRDT_RELOC_HEADER_SIZE;
+        page_rel_size += PRDT_RELOC_HEADER_SIZE;
       if (found64)
-        full_entry_size += PRDT_RELOC_HEADER_SIZE;
+        page_rel_size += PRDT_RELOC_HEADER_SIZE;
 
-      BFD_ASSERT (full_entry_size <= MAX_PAGE_RELOCS_SIZE);
+      BFD_ASSERT (page_rel_size <= MAX_PAGE_RELOCS_SIZE);
 
-      bfd_vma page_entry_size = ROUND_UP (full_entry_size, PRAT_ENTRY_SIZE);
-      po_prdt(abfd).total_length += page_entry_size;
-      file_pos += PRDT_PAGE_HEADER_SIZE + page_entry_size;
-      prdt_pos += PRDT_PAGE_HEADER_SIZE + page_entry_size;
-      po_prat(abfd).occupied_entries ++;
-    } else {
-      po_prat_entries(abfd)[i] = 0;
+      page_rel_size = ROUND_UP (page_rel_size, 4);
+
+      file_pos += page_rel_size;
+      prdt_pos += page_rel_size;
+      po_prdt (abfd).total_length += page_rel_size;
+      po_prat (abfd).occupied_entries++;
     }
-  }
-  po_prdt(abfd).total_length += PRDT_SIZE_NO_ENTRY(po_prat(abfd).occupied_entries);
-  po_pmarl(abfd).prdt_length = po_prdt(abfd).total_length;
+  po_pmarl (abfd).prdt_length = po_prdt(abfd).total_length;
 
-  po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
-    .rec_type = PLMH_REC_TYPE_PRDT,
-    .rec_offset = prdt_offset,
-    .rec_length = po_prdt(abfd).total_length
-  };
+  po_rec_decls (abfd)[rec_num].rec_type = PLMH_REC_TYPE_PRDT;
+  po_rec_decls (abfd)[rec_num].rec_offset = prdt_offset;
+  po_rec_decls (abfd)[rec_num].rec_length = po_prdt (abfd).total_length;
+  rec_num++;
 
   /* Update PRAT pointers */
-  po_prat_entries(abfd)[pages_needed] = po_prdt(abfd).total_length;
-
-  /* Advance past PRDT */
-  file_pos += PRDT_BASE_SIZE;
+  po_prat_entries (abfd)[pages_needed] = po_prdt (abfd).total_length;
 
   /* Finalize LIDX */
   const unsigned int lidx_elements = 1;
@@ -475,11 +526,11 @@ bfd_po_finalize_header (bfd *abfd)
   /* Advance past PSEGM */
   file_pos += PSEGM_SIZE(segments);
 
-  BFD_ASSERT (lidx_element_num = lidx_elements);
+  BFD_ASSERT (lidx_element_num == lidx_elements);
 
   /* Advance past pad */
   const unsigned int remainder_words = (16 - (file_pos - (file_pos / 16 * 16))) / 4;
-  for (unsigned i = 0; i < remainder_words; i ++)
+  for (unsigned int i = 0; i < remainder_words; i ++)
     file_pos += sizeof(text_pad);
   po_text_pad_words(abfd) = remainder_words;
 
@@ -674,7 +725,7 @@ bfd_po_output_header (bfd *abfd)
     goto fail_free;
 
   char prat_entry[4];
-  for (unsigned i = 0; i < po_prat(abfd).total_entries + 1; i ++) {
+  for (unsigned int i = 0; i < po_prat(abfd).total_entries + 1; i++) {
     unsigned int entry = po_prat_entries(abfd)[i];
     H_PUT_32 (abfd, entry, prat_entry);
     if (bfd_bwrite(prat_entry, 4, abfd) != 4)
@@ -690,89 +741,146 @@ bfd_po_output_header (bfd *abfd)
   if (bfd_bwrite(prdt, PRDT_BASE_SIZE, abfd) != PRDT_BASE_SIZE)
     goto fail_free;
 
-  char prdt_entry[10];
-  char prdt_page_header[PRDT_PAGE_HEADER_SIZE];
-  char prdt_reloc_header[PRDT_RELOC_HEADER_SIZE]; /* TODO: style */
-  for (unsigned i = 0; i < po_prat(abfd).total_entries; i ++) {
-    const unsigned int entry_count = po_prdt_page_headers(abfd)[i].count;
-    if (entry_count > 0) {
-      bfd_po_swap_prdt_page_header_out(abfd, &po_prdt_page_headers(abfd)[i], (struct po_external_prdt_page_header *) prdt_page_header);
-      if (bfd_bwrite(prdt_page_header, PRDT_PAGE_HEADER_SIZE, abfd) != PRDT_PAGE_HEADER_SIZE)
+  /* Output the PRDT.  */
+  char zero_pad[4];
+  zero_pad[0] = zero_pad[1] = zero_pad[2] = zero_pad[3] = 0;
+  for (unsigned int page = 0; page < po_prat(abfd).total_entries; page++)
+    {
+      union {
+	struct po_external_reloc_32 r32;
+	struct po_external_reloc_32_ext r32ext;
+	struct po_external_reloc_64 r64;
+	struct po_external_reloc_64_ext r64ext;
+      } prdt_entry;
+      struct po_external_prdt_page_header page_header;
+      struct po_external_prdt_reloc_header reloc_header;
+      bfd_size_type ent_num, pad;
+      bfd_size_type page_rel_size = 0, page_full_size;
+      bfd_size_type found32 = 0, found64 = 0;
+      unsigned int entry_count = po_prdt_page_headers(abfd)[page].count;
+
+      if (entry_count == 0)
+	continue;
+
+      po_swap_prdt_page_header_out (abfd,
+				    &po_prdt_page_headers (abfd)[page],
+				    &page_header);
+      if (write_ext (&page_header, abfd))
         goto fail_free;
 
       /* Determine total size */
-      unsigned long full_entry_size = 0;
-      unsigned found32 = 0, found64 = 0;
-      for (unsigned i2 = 0; i2 < entry_count; i2 ++)
-      {
-        const struct po_internal_prdt_entry *entry = &po_prdt_entries(abfd)[i][i2];
-        switch (entry->reloc_type) {
-          case R_390_PO_32:
-            full_entry_size += 6;
-            found32 ++;
-            break;
-          case R_390_PO_64:
-            full_entry_size += sizeof(struct po_external_prdt_r_390_po_64_reloc);
-            found64 ++;
-            break;
-        }
-      }
+      for (ent_num = 0; ent_num < entry_count; ent_num++)
+	{
+	  switch (po_prdt_entries (abfd)[page][ent_num].type)
+	    {
+	    case PO_32:
+	      page_rel_size += 6;
+	      found32++;
+	      break;
+	    case PO_32_EXT:
+	      page_rel_size += 8;
+	      break;
+	    case PO_64:
+	      page_rel_size += 10;
+	      found64++;
+	      break;
+	    case PO_64_EXT:
+	      page_rel_size += 12;
+	      break;
+	    }
+	}
 
-      BFD_ASSERT (full_entry_size % 2 == 0);
-      BFD_ASSERT (full_entry_size <= MAX_PAGE_RELOCS_SIZE);
+      BFD_ASSERT (page_rel_size % 2 == 0);
+      BFD_ASSERT (page_rel_size <= MAX_PAGE_RELOCS_SIZE);
+      BFD_ASSERT (found32 <= 4096 / 4);
+      BFD_ASSERT (found64 <= 4096 / 8);
 
-      bfd_vma page_entry_size = ROUND_UP (full_entry_size, PRAT_ENTRY_SIZE); /* TODO */
-      if (found32) {
-        struct po_internal_prdt_page_reloc_header page_header = (struct po_internal_prdt_page_reloc_header) {
-          .flags = 0x01,
-          .reference_id = 0,
-          .reloc_count = found32
-        };
-        bfd_po_swap_prdt_page_reloc_header_out (abfd, &page_header, (struct po_external_prdt_page_reloc_header *) &prdt_reloc_header);
-        if (bfd_bwrite(prdt_reloc_header, PRDT_RELOC_HEADER_SIZE, abfd) != PRDT_RELOC_HEADER_SIZE)
-          goto fail_free;
+      page_full_size = ROUND_UP (page_rel_size, 4);
+      pad = page_full_size - page_rel_size;
 
-        for (unsigned int i2 = 0; i2 < entry_count; i2 ++)
-        {
-          struct po_internal_prdt_entry entry = po_prdt_entries(abfd)[i][i2];
-          entry.full_offset &= 0x0fff;
-          if (entry.reloc_type != R_390_PO_32)
-            continue;
-          bfd_po_swap_prdt_six_byte_reloc_out(abfd, &entry, (struct po_external_prdt_six_byte_reloc*) prdt_entry);
-          if (bfd_bwrite (prdt_entry, 6, abfd) != 6)
-            goto fail_free;
-        }
-      }
+      if (found32)
+	{
+	  /* Output regular 32-bit relocs.  */
+	  init_reloc_header (abfd, PO_32, 0,
+			     (unsigned short) found32, &reloc_header);
+	  if (write_ext (&reloc_header, abfd))
+	    goto fail_free;
 
-      if (found64) {
-        struct po_internal_prdt_page_reloc_header page_header = (struct po_internal_prdt_page_reloc_header) {
-          .flags = 0x81,
-          .reference_id = 0,
-          .reloc_count = found64
-        };
-        bfd_po_swap_prdt_page_reloc_header_out (abfd, &page_header, (struct po_external_prdt_page_reloc_header *) &prdt_reloc_header);
-        if (bfd_bwrite(prdt_reloc_header, PRDT_RELOC_HEADER_SIZE, abfd) != PRDT_RELOC_HEADER_SIZE)
-          goto fail_free;
+	  for (ent_num = 0; ent_num < entry_count; ent_num++)
+	    {
+	      struct po_internal_relent *r_ent =
+		&po_prdt_entries (abfd)[page][ent_num];
 
-        for (unsigned int i2 = 0; i2 < entry_count; i2 ++)
-        {
-          struct po_internal_prdt_entry entry = po_prdt_entries(abfd)[i][i2];
-          entry.full_offset &= 0x0fff;
-          if (entry.reloc_type != R_390_PO_64)
-            continue;
-          bfd_po_swap_prdt_r_390_po_64_reloc_out(abfd, &entry, (struct po_external_prdt_r_390_po_64_reloc*) prdt_entry);
-          if (bfd_bwrite (prdt_entry, sizeof(struct po_external_prdt_r_390_po_64_reloc), abfd) != sizeof(struct po_external_prdt_r_390_po_64_reloc))
-            goto fail_free;
-        }
-      }
+	      if (r_ent->type != PO_32)
+		continue;
 
-      unsigned int pad = page_entry_size - full_entry_size;
-      char zero_pad[8];
-      memset(zero_pad, 0, sizeof(zero_pad));
-      if (bfd_bwrite(zero_pad, pad, abfd) != pad)
+	      po_swap_reloc_32_out (abfd, r_ent, &prdt_entry.r32);
+
+	      if (write_ext (&prdt_entry.r32, abfd))
+		goto fail_free;
+	    }
+	}
+      if (found64)
+	{
+	  /* Output regular 64-bit relocs.  */
+	  init_reloc_header (abfd, PO_64, 0,
+			     (unsigned short) found64, &reloc_header);
+	  if (write_ext (&reloc_header, abfd))
+	    goto fail_free;
+
+	  for (ent_num = 0; ent_num < entry_count; ent_num++)
+	    {
+	      struct po_internal_relent *r_ent =
+		&po_prdt_entries (abfd)[page][ent_num];
+
+	      if (r_ent->type != PO_64)
+		continue;
+
+	      po_swap_reloc_64_out (abfd, r_ent, &prdt_entry.r64);
+
+	      if (write_ext (&prdt_entry.r64, abfd))
+		goto fail_free;
+	    }
+	}
+      if (found32 + found64 < entry_count)
+	{
+	  /* Output the headerless relocs.  */
+	  for (ent_num = 0; ent_num < entry_count; ent_num++)
+	    {
+	      struct po_internal_relent *r_ent =
+		&po_prdt_entries (abfd)[page][ent_num];
+
+	      switch (r_ent->type)
+		{
+		case PO_32:
+		case PO_64:
+		  continue;
+
+		case PO_32_EXT:
+		  po_swap_reloc_32_ext_out (abfd, r_ent,
+					    &prdt_entry.r32ext);
+		  if (write_ext (&prdt_entry.r32ext, abfd))
+		    goto fail_free;
+		  break;
+
+		case PO_64_EXT:
+		  po_swap_reloc_64_ext_out (abfd, r_ent,
+					    &prdt_entry.r64ext);
+		  if (write_ext (&prdt_entry.r64ext, abfd))
+		    goto fail_free;
+		  break;
+
+		default:
+		  bfd_set_error (bfd_error_bad_value);
+		  goto fail_free;
+		}
+	    }
+	}
+
+      /* Pad each page entry in the PRDT to a fullword.  */
+      if (bfd_bwrite (&zero_pad, pad, abfd) != pad)
         goto fail_free;
     }
-  }
 
   if (! bfd_po_output_header_lidx (abfd))
     goto fail_free;
@@ -815,8 +923,8 @@ bfd_po_new_section_hook (bfd *abfd, sec_ptr sec)
 }
 
 static bfd_boolean
-bfd_po_set_section_contents (bfd *abfd ATTRIBUTE_UNUSED, sec_ptr sec,
-			     const void *contents ATTRIBUTE_UNUSED,
+bfd_po_set_section_contents (bfd *abfd, sec_ptr sec,
+			     const void *contents,
 			     file_ptr offset ATTRIBUTE_UNUSED,
 			     bfd_size_type len ATTRIBUTE_UNUSED)
 {
@@ -831,10 +939,17 @@ bfd_po_set_section_contents (bfd *abfd ATTRIBUTE_UNUSED, sec_ptr sec,
     {
       struct bfd_section *s;
       bfd_vma full_size = 0;
+      bfd_size_type excess = full_size % 0x1000;
 
       for (s = abfd->sections; s != NULL; s = s->next)
 	if (s->vma + s->size > full_size)
 	  full_size = s->vma + s->size;
+
+      /* Make sure the last page has at least four bytes, for the
+	 checksum.  */
+      excess = full_size % 0x1000;
+      if (excess < 4)
+	full_size += 4 - excess;
 
       po_section_contents (abfd) = bfd_zmalloc (full_size);
       if (po_section_contents (abfd) == NULL)
@@ -889,12 +1004,7 @@ bfd_po_mkobject (bfd *abfd)
   po_pmarl(abfd).attr2 |= PMARL_ATTR2_SEG1_RMODE31;
   memset(po_pmarl(abfd).userid, ' ', sizeof(po_pmarl(abfd).userid));
 
-  /* Initialize PRAT and PRDT */
-  memcpy(po_prat(abfd).fixed_eyecatcher, eyecatcher_prat, sizeof(eyecatcher_prat));
-  po_prat(abfd).version = PRAT_VERSION;
-  memcpy(po_prdt(abfd).fixed_eyecatcher, eyecatcher_prdt, sizeof(eyecatcher_prdt));
-  po_prdt(abfd).version = PRDT_VERSION;
-  po_prdt(abfd).length = PRDT_BASE_SIZE; 
+  /* PRAT and PRDT are initialized elsewhere.  */
 
   /* Initialize LIDX */
   memcpy(po_lidx(abfd).fixed_eyecatcher, eyecatcher_lidx, sizeof(eyecatcher_lidx));
@@ -935,84 +1045,222 @@ bfd_po_write_object_contents (__attribute ((unused)) bfd *abfd)
 }
 
 static int
-bfd_po_sizeof_headers (bfd *abfd ATTRIBUTE_UNUSED, struct bfd_link_info *info ATTRIBUTE_UNUSED)
+bfd_po_sizeof_headers (bfd *abfd ATTRIBUTE_UNUSED,
+		       struct bfd_link_info *info ATTRIBUTE_UNUSED)
 {
   return 0;
 }
 
 static long
-bfd_po_get_reloc_upper_bound (bfd *abfd ATTRIBUTE_UNUSED, sec_ptr sec)
+bfd_po_get_reloc_upper_bound (bfd *abfd ATTRIBUTE_UNUSED,
+			      sec_ptr sec)
 {
   return (sec->reloc_count + 1) * sizeof (arelent *);
 }
 
 static long
-bfd_po_canonicalize_reloc (bfd *abfd ATTRIBUTE_UNUSED, sec_ptr sec ATTRIBUTE_UNUSED, arelent **relocs ATTRIBUTE_UNUSED, struct bfd_symbol **syms ATTRIBUTE_UNUSED)
+bfd_po_canonicalize_reloc (bfd *abfd ATTRIBUTE_UNUSED,
+			   sec_ptr sec ATTRIBUTE_UNUSED,
+			   arelent **relocs ATTRIBUTE_UNUSED,
+			   struct bfd_symbol **syms ATTRIBUTE_UNUSED)
 {
   return 0; /* TODO */
 }
 
 static reloc_howto_type *
-bfd_po_reloc_type_lookup (bfd *abfd ATTRIBUTE_UNUSED, bfd_reloc_code_real_type reloc ATTRIBUTE_UNUSED)
+bfd_po_reloc_type_lookup (bfd *abfd ATTRIBUTE_UNUSED,
+			  bfd_reloc_code_real_type reloc ATTRIBUTE_UNUSED)
 {
   return 0;
 }
 
 static reloc_howto_type *
-bfd_po_reloc_name_lookup (bfd *abfd ATTRIBUTE_UNUSED, const char *reloc ATTRIBUTE_UNUSED)
+bfd_po_reloc_name_lookup (bfd *abfd ATTRIBUTE_UNUSED,
+			  const char *reloc ATTRIBUTE_UNUSED)
 {
   return 0;
 }
 
 static bfd_boolean
-bfd_po_initialize_prdt(bfd *abfd)
+bfd_po_initialize_prat_prdt (bfd *abfd)
 {
-  unsigned page_count = ROUND_UP(po_text_length(abfd), 0x1000) / 0x1000;
-  po_prdt_page_headers(abfd) = bfd_zmalloc2(page_count, sizeof(struct po_internal_prdt_page_header));
-  if (po_prdt_page_headers(abfd) == NULL)
-    return FALSE;
-  for (unsigned i = 0; i < page_count; i ++)
-  {
-    po_prdt_page_headers(abfd)[i].page_number = i;
-    po_prdt_page_headers(abfd)[i].segment_index = 1; /* TODO */
-    po_prdt_page_headers(abfd)[i].count = 0;
-    po_prdt_page_headers (abfd)[i].no_checksum = FALSE;
-  }
+  bfd_size_type page_count =
+    ROUND_UP (po_text_length (abfd), 0x1000) / 0x1000;
 
-  po_prdt_entries(abfd) = bfd_zmalloc2(page_count, sizeof(struct po_internal_prdt_entry *));
-  if (po_prdt_entries(abfd) == NULL)
+  if (page_count > 4294967295)
+    {
+      _bfd_error_handler
+	/* xgettext:c-format */
+	(_("The resultant program object would be too large (%lu)"),
+	 po_text_length (abfd));
+      bfd_set_error (bfd_error_file_too_big);
+      return FALSE;
+    }
+
+  po_prdt (abfd).version = PRDT_VERSION;
+  po_prdt (abfd).length = PRDT_BASE_SIZE;
+  memcpy (po_prdt (abfd).fixed_eyecatcher, eyecatcher_prdt,
+	  sizeof (eyecatcher_prdt));
+
+  /* z/OS TODO: this is wasteful.  */
+  po_prdt_page_headers (abfd) =
+    bfd_zmalloc2 (page_count, sizeof (struct po_internal_prdt_page_header));
+  if (po_prdt_page_headers (abfd) == NULL)
     return FALSE;
+
+  for (unsigned int page = 0; page < page_count; page++)
+    {
+      po_prdt_page_headers (abfd)[page].page_number = page;
+      po_prdt_page_headers (abfd)[page].segment_index = 1;  /* TODO */
+      po_prdt_page_headers (abfd)[page].count = 0;
+      po_prdt_page_headers (abfd)[page].no_checksum = FALSE;
+    }
+
+  po_prdt_entries (abfd) =
+    bfd_zmalloc2 (page_count, sizeof (struct po_internal_relent *));
+  if (po_prdt_entries (abfd) == NULL)
+    return FALSE;
+
+  po_prat (abfd).version = PRAT_VERSION;
+  po_prat (abfd).length = PRAT_SIZE (page_count + 1); /* TODO rlds? */
+  po_prat (abfd).occupied_entries = 0;
+  po_prat (abfd).total_entries = page_count;
+  po_prat (abfd).single_entry_length = PRAT_ENTRY_SIZE;
+  po_prat (abfd).unknown_flags = 0x00;
+  memcpy (po_prat (abfd).fixed_eyecatcher, eyecatcher_prat,
+	  sizeof (eyecatcher_prat));
+
+  po_prat_entries (abfd) = bfd_zmalloc2 (sizeof (bfd_vma), page_count + 1);
+  if (po_prat_entries (abfd) == NULL)
+    return FALSE;
+
+  po_pmarl (abfd).prat_length = PRAT_BASE_SIZE;
+  po_pmarl (abfd).prat_offset = po_prat (abfd).length;
 
   return TRUE;
 }
 
-static bfd_boolean
-bfd_po_add_prdt_entry(bfd *abfd, struct po_internal_prdt_entry *entry)
-{
-  unsigned int page_number = entry->full_offset / 0x1000;
-  unsigned int entry_count = po_prdt_page_headers(abfd)[page_number].count;
-  if (entry_count == 0 || !(entry_count & (entry_count - 1)))
-  {
-    /* reallocation required */
-    unsigned int new_size = entry_count ? entry_count * 2 : 1;
-    po_prdt_entries (abfd)[page_number] =
-      bfd_realloc2 (po_prdt_entries (abfd)[page_number],
-		    new_size, sizeof (struct po_internal_prdt_entry));
-    if (po_prdt_entries(abfd)[page_number] == NULL)
-      return FALSE;
-  }
+/* Add an entry to to PRDT, which will cause the loader to resolve
+   the given absolute relocation at load-time. The relocation, described
+   by RELENT is located at OFFSET from the start of the module.  */
 
-  po_prdt_entries(abfd)[page_number][entry_count] = *entry;
-  po_prdt_page_headers(abfd)[page_number].count ++;
+static bfd_boolean
+add_prdt_entry (bfd *abfd, bfd_vma offset, arelent *reloc)
+{
+  bfd_vma addend;
+  unsigned int entry_count;
+  struct po_internal_relent *entry;
+  bfd_size_type page_number = offset / 0x1000;
+  asymbol *symbol = *reloc->sym_ptr_ptr;
+
+  if (symbol == NULL)
+    return FALSE;
+
+  if (page_number > 4294967295)
+    {
+      _bfd_error_handler
+	/* xgettext:c-format */
+	(_("Page number for reloc is unrepresentable (%lu)"), page_number);
+      bfd_set_error (bfd_error_file_too_big);
+      return FALSE;
+    }
+
+  /* TODO: conditionalize symbol->value? */
+  addend = (symbol->section->output_section->vma
+	    + symbol->section->output_offset
+	    + reloc->addend + symbol->value);
+
+  entry_count = po_prdt_page_headers (abfd)[page_number].count;
+
+  /* We keep the entry count arrays a power of two.  */
+  if (entry_count == 0 || !(entry_count & (entry_count - 1)))
+    {
+      /* reallocation required */
+      unsigned int new_size = entry_count ? entry_count * 2 : 4;
+      po_prdt_entries (abfd)[page_number] =
+	bfd_realloc2 (po_prdt_entries (abfd)[page_number],
+		      new_size, sizeof (struct po_internal_relent));
+      if (po_prdt_entries (abfd)[page_number] == NULL)
+	return FALSE;
+    }
+  po_prdt_page_headers (abfd)[page_number].count++;
+
+  entry = &po_prdt_entries (abfd)[page_number][entry_count];
+  entry->offset = offset;
 
   /* If a reloc intersects with the checksum area,
      the checksum needs to be set to a special value.  */
-  if ((entry->full_offset & 0xFFF) < 4)
+  if ((offset & 0xFFF) < 4)
     {
       po_prdt_page_headers (abfd)[page_number].no_checksum = TRUE;
       memcpy (po_prdt_page_headers (abfd)[page_number].checksum,
 	      no_checksum_val, 4);
     }
+
+  /* Figure out which type of reloc we should use.  */
+  switch (reloc->howto->type)
+    {
+    case R_390_32:
+      if (addend > 4294967295)
+	{
+	  _bfd_error_handler
+	    /* xgettext:c-format */
+	    (_("Addend for 32-bit abs reloc is too large (%lu)"), addend);
+	  bfd_set_error (bfd_error_bad_value);
+	  return FALSE;
+	}
+
+      if (offset % 4 == 0)
+	{
+	  entry->type = PO_32;
+	  entry->flags = 0;  /* unused.  */
+	}
+      else
+	{
+	  entry->type = PO_32_EXT;
+	  entry->flags = PO_32_RELOC_UNALIGNED;
+
+	  if (offset % 0x1000 > 0xffc)
+	    {
+	      /* This reloc will cross the page, so the next page can't
+		 have a checksum.  */
+	      po_prdt_page_headers (abfd)[page_number + 1].no_checksum = TRUE;
+	      memcpy (po_prdt_page_headers (abfd)[page_number + 1].checksum,
+		      no_checksum_val, 4);
+	    }
+	}
+      break;
+
+    case R_390_64:
+      if (offset % 8 == 0)
+	{
+	  entry->type = PO_64;
+	  entry->flags = 0;  /* unused.  */
+	}
+      else
+	{
+	  entry->type = PO_64_EXT;
+	  if (offset % 0x1000 <= 0xff8)
+	    entry->flags = PO_64_RELOC_UNALIGNED;
+	  else
+	    {
+	      entry->flags = PO_64_RELOC_XPAGE;
+
+	      /* This reloc will cross the page, so the next page can't
+		 have a checksum.  */
+	      po_prdt_page_headers (abfd)[page_number + 1].no_checksum = TRUE;
+	      memcpy (po_prdt_page_headers (abfd)[page_number + 1].checksum,
+		      no_checksum_val, 4);
+	    }
+	}
+      break;
+
+    default:
+      bfd_set_error (bfd_error_bad_value);
+      return FALSE;
+    }
+
+  entry->addend = addend;
 
   return TRUE;
 }
@@ -1144,7 +1392,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
   if (!po_calculate_section_sizes (abfd, info))
     return FALSE;
 
-  if (!bfd_po_initialize_prdt(abfd))
+  if (!bfd_po_initialize_prat_prdt(abfd))
     return FALSE;
 
   /* Capture z/OS relocatable relocs */
@@ -1203,7 +1451,7 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
 
 	      for (parent = reloc_vector; *parent != NULL; parent++)
 		{
-		  bfd_vma full_offset, addend;
+		  bfd_vma full_offset;
 		  char *dst_ptr;
 		  asymbol *symbol = *(*parent)->sym_ptr_ptr;
 		  if (symbol == NULL)
@@ -1231,43 +1479,32 @@ bfd_po_final_link (bfd *abfd, struct bfd_link_info *info)
 		    {
 		    case R_390_32:
 		    case R_390_64:
-		      {
-			/* z/OS TODO: common symbols? */
+		      /* z/OS TODO: common symbols? */
 
-			/* A symbol is unresolved if it belongs to the
-			   undefined section.  */
-			if ((symbol->flags & BSF_WEAK) != 0
-			    && bfd_is_und_section (symbol->section))
-			  {
-			    /* Zero out unresolved weak symbol */
-			    if ((*parent)->howto->type == R_390_64)
-			      bfd_put_64 (info->output_bfd, 0, dst_ptr);
-			    else
-			      bfd_put_32 (info->output_bfd, 0, dst_ptr);
-			    break;
-			  }
+		      /* A symbol is unresolved if it belongs to the
+			  undefined section.  */
+		      if ((symbol->flags & BSF_WEAK) != 0
+			  && bfd_is_und_section (symbol->section))
+			{
+			  /* Zero out unresolved weak symbol */
+			  if ((*parent)->howto->type == R_390_64)
+			    bfd_put_64 (info->output_bfd, 0, dst_ptr);
+			  else
+			    bfd_put_32 (info->output_bfd, 0, dst_ptr);
+			  break;
+			}
 
-			full_offset = (input_section->output_offset + s->vma
-				       + (*parent)->address);
+		      full_offset = (input_section->output_offset + s->vma
+				      + (*parent)->address);
 
-			/* TODO: condition value? */
-			addend = (symbol->section->output_section->vma
-				  + symbol->section->output_offset
-				  + (*parent)->addend + symbol->value);
+		      if (!add_prdt_entry (abfd, full_offset, *parent))
+			goto error_return;
+		      break;
 
-			struct po_internal_prdt_entry entry = {
-			  .full_offset = full_offset,
-			  .addend = addend,
-			  .reloc_type = ((*parent)->howto->type == R_390_64
-					 ? R_390_PO_64 : R_390_PO_32)
-			};
-			if (!bfd_po_add_prdt_entry (abfd, &entry))
-			  goto error_return;
-			break;
-		      }
 		    case R_390_TLS_IEENT:
 		      /* z/OS TODO: We need to do some stuff here.  */
 		      break;
+
 		    case R_390_TLS_LE32:
 		    case R_390_TLS_LE64:
 		      {

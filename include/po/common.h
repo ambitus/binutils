@@ -143,4 +143,24 @@
 #define PSEGM_EXECUTABLE               0x20
 #define PSEGM_UNKNOWN                  0x08
 
+/* The one-byte character either in the reloc header or the reloc entry
+   itself that identifies the the type of the current entry or
+   successive reloc entries.  */
+
+enum po_reloc_type {
+  PO_32		= 0x01,
+  PO_32_EXT	= 0x03,
+  PO_64		= 0x81,
+  PO_64_EXT	= 0x83
+};
+
+/* The magic value that the reloc's flags must be set to when
+   creating an unaligned reloc.  */
+#define PO_32_RELOC_UNALIGNED	0x0C
+#define PO_64_RELOC_UNALIGNED	0x0E
+
+/* When a 64-bit reloc will cross a page boundary, its flags must be set
+   to the following.  */
+#define PO_64_RELOC_XPAGE	0x2E
+
 #endif

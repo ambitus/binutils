@@ -67,7 +67,7 @@ struct po_obj_tdata {
 
   /* Repeating internal structures TODO: refactor? */
   struct po_internal_header_rec_decl       *rec_decls;
-  struct po_internal_prdt_entry           **prdt_entries;
+  struct po_internal_relent               **prdt_entries;
   struct po_internal_prdt_page_header      *prdt_page_headers;
   struct po_internal_lidx_entry            *lidx_entries;
   struct po_internal_psegm_entry           *psegm_entries;

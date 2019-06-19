@@ -141,22 +141,10 @@ struct po_internal_prdt_page_header {
   bfd_boolean no_checksum;
 };
 
-struct po_internal_prdt_page_reloc_header {
-  unsigned char flags;
+struct po_internal_prdt_reloc_header {
+  unsigned char type;
   unsigned char reference_id;
   unsigned short reloc_count;
-};
-
-
-enum po_reloc_type {
-  R_390_PO_32,
-  R_390_PO_64
-};
-
-struct po_internal_prdt_entry {
-  enum po_reloc_type reloc_type; /* This is temporary before we enumerate */
-  bfd_vma full_offset;
-  unsigned long addend;
 };
 
 struct po_internal_lidx {
@@ -183,6 +171,16 @@ struct po_internal_lidx_entry {
   unsigned char type;
   bfd_vma entry_offset;
   bfd_size_type entry_length;
+};
+
+/* The abstract representation of a relocation/PRDT entry.  */
+/* z/OS TODO: switch to using HOWTOs.  */
+
+struct po_internal_relent {
+  enum po_reloc_type	type;
+  unsigned char		flags;	/* only used for some types.  */
+  bfd_vma		offset;
+  bfd_vma		addend;
 };
 
 #endif

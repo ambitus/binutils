@@ -168,18 +168,44 @@ struct po_external_prdt_page_header {
   unsigned char reloc_count_total[2];
 };
 
-struct po_external_prdt_page_reloc_header {
-  unsigned char flags;
+struct po_external_prdt_reloc_header {
+  unsigned char type;
   unsigned char reference_id;
   unsigned char reloc_count[2];
 };
 
-struct po_external_prdt_six_byte_reloc {
+/* PRDT entry for a regular aligned 32-bit absolute load time
+   relocation. Requires a reloc header.  */
+
+struct po_external_reloc_32 {
   unsigned char offset[2];
   unsigned char value[4];
 };
 
-struct po_external_prdt_r_390_po_64_reloc {
+/* PRDT entry for a potentially unaligned 32-bit absolute load time
+   relocation. Does not require a reloc header.  */
+
+struct po_external_reloc_32_ext {
+  unsigned char type;
+  unsigned char flags;
+  unsigned char offset[2];
+  unsigned char value[4];
+};
+
+/* PRDT entry for a regular aligned 64-bit absolute load time
+   relocation. Requires a reloc header.  */
+
+struct po_external_reloc_64 {
+  unsigned char offset[2];
+  unsigned char value[8];
+};
+
+/* PRDT entry for a potentially unaligned 64-bit absolute load time
+   relocation. Does not require a reloc header.  */
+
+struct po_external_reloc_64_ext {
+  unsigned char type;
+  unsigned char flags;
   unsigned char offset[2];
   unsigned char value[8];
 };
@@ -258,12 +284,12 @@ struct po_external_pgstb_entry {
  *  - PMAP
  */
 
-/* The six byte entries we generate for 32-bit relocations are the
+/* The eight byte entries we generate for 32-bit relocations are the
    most space-inefficient ones we can currently generate, so we
    should never be attempting to generate PRDT entries larger than
    what would be required for a whole page worth of them for any given
    page.  */
-#define MAX_PAGE_RELOCS_SIZE	       (0x1000 * 6 / 4)
+#define MAX_PAGE_RELOCS_SIZE	       (0x1000 * 8 / 4)
 
 #define ROUND_UP(x,y)                  (((x) + (y) - 1) / (y) * (y))
 #define PLMH_BASE_SIZE                 (sizeof(struct po_external_plmh))
@@ -284,8 +310,7 @@ struct po_external_pgstb_entry {
 						 PRAT_ENTRY_SIZE)
 #define PRDT_BASE_SIZE                 (sizeof(struct po_external_prdt))
 #define PRDT_PAGE_HEADER_SIZE          (sizeof(struct po_external_prdt_page_header))
-#define PRDT_SIZE_NO_ENTRY(x)          (PRDT_BASE_SIZE + PRDT_PAGE_HEADER_SIZE * (x))
-#define PRDT_RELOC_HEADER_SIZE         (sizeof(struct po_external_prdt_page_reloc_header))
+#define PRDT_RELOC_HEADER_SIZE         (sizeof(struct po_external_prdt_reloc_header))
 
 #define LIDX_HEADER_BASE_SIZE          (sizeof(struct po_external_lidx))
 #define LIDX_HEADER_SIZE(x)            (LIDX_HEADER_BASE_SIZE + (x) * LIDX_HEADER_ENTRY_SIZE)
