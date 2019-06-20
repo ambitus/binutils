@@ -2609,7 +2609,11 @@ tc_gen_reloc (asection *seg ATTRIBUTE_UNUSED, fixS *fixp)
 void
 s390_cfi_frame_initial_instructions (void)
 {
+#ifdef TE_ZOS
+  cfi_add_CFA_def_cfa (13, 0);
+#else  /* linux, tpf.  */
   cfi_add_CFA_def_cfa (15, s390_arch_size == 64 ? 160 : 96);
+#endif
 }
 
 int
