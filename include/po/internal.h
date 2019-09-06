@@ -24,11 +24,15 @@
 
 #include "common.h"
 
-struct po_internal_plmh;
-struct po_internal_header_rec_decl;
-struct po_internal_pmar;
-struct po_external_pmarl;
-struct po_internal_prat_range;
+/* The abstract representation of a relocation/PRDT entry.  */
+/* z/OS TODO: switch to using HOWTOs.  */
+
+struct po_internal_relent {
+  enum po_reloc_type	type;
+  unsigned char		flags;	/* only used for some types.  */
+  bfd_vma		offset;
+  bfd_vma		addend;
+};
 
 struct po_internal_plmh {
   char           fixed_eyecatcher[8];
@@ -130,15 +134,20 @@ struct po_internal_prdt {
   bfd_size_type total_length;
 };
 
-struct po_internal_prdt_page_header {
-  unsigned int page_number;
-  unsigned short segment_index;
-  unsigned char checksum[4];
-  unsigned short count;
+/* Abstract representation of the prdt entries for one page.  */
+
+struct po_internal_prdt_page {
+  unsigned int		num;	/* Page number.  */
+  unsigned short	seg_idx;	/* Segment index.  */
+  unsigned char		checksum[4];
+  unsigned short	count;
 
   /* The page has a reloc in the first 4 bytes and should have
      its checksum set to 'noch' in EBCDIC.  */
-  bfd_boolean no_checksum;
+  bfd_boolean		no_checksum;
+
+  /* The list of relocations associated with this page.  */
+  po_internal_relent	*relocs;
 };
 
 struct po_internal_prdt_reloc_header {
@@ -171,16 +180,6 @@ struct po_internal_lidx_entry {
   unsigned char type;
   bfd_vma entry_offset;
   bfd_size_type entry_length;
-};
-
-/* The abstract representation of a relocation/PRDT entry.  */
-/* z/OS TODO: switch to using HOWTOs.  */
-
-struct po_internal_relent {
-  enum po_reloc_type	type;
-  unsigned char		flags;	/* only used for some types.  */
-  bfd_vma		offset;
-  bfd_vma		addend;
 };
 
 #endif

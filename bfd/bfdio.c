@@ -184,6 +184,8 @@ bfd_bread (void *ptr, bfd_size_type size, bfd *abfd)
 	 && !bfd_is_thin_archive (abfd->my_archive))
     {
       offset += abfd->origin;
+      if (abfd == abfd->my_archive)
+	break;
       abfd = abfd->my_archive;
     }
 
@@ -221,6 +223,7 @@ bfd_bwrite (const void *ptr, bfd_size_type size, bfd *abfd)
   file_ptr nwrote;
 
   while (abfd->my_archive != NULL
+	 && abfd != abfd->my_archive
 	 && !bfd_is_thin_archive (abfd->my_archive))
     abfd = abfd->my_archive;
 
@@ -253,6 +256,8 @@ bfd_tell (bfd *abfd)
 	 && !bfd_is_thin_archive (abfd->my_archive))
     {
       offset += abfd->origin;
+      if (abfd == abfd->my_archive)
+	break;
       abfd = abfd->my_archive;
     }
 
@@ -268,6 +273,7 @@ int
 bfd_flush (bfd *abfd)
 {
   while (abfd->my_archive != NULL
+	 && abfd != abfd->my_archive
 	 && !bfd_is_thin_archive (abfd->my_archive))
     abfd = abfd->my_archive;
 
@@ -285,6 +291,7 @@ bfd_stat (bfd *abfd, struct stat *statbuf)
   int result;
 
   while (abfd->my_archive != NULL
+	 && abfd != abfd->my_archive
 	 && !bfd_is_thin_archive (abfd->my_archive))
     abfd = abfd->my_archive;
 
@@ -313,6 +320,8 @@ bfd_seek (bfd *abfd, file_ptr position, int direction)
 	 && !bfd_is_thin_archive (abfd->my_archive))
     {
       offset += abfd->origin;
+      if (abfd == abfd->my_archive)
+	break;
       abfd = abfd->my_archive;
     }
 
@@ -477,6 +486,8 @@ bfd_mmap (bfd *abfd, void *addr, bfd_size_type len,
 	 && !bfd_is_thin_archive (abfd->my_archive))
     {
       offset += abfd->origin;
+      if (abfd == abfd->my_archive)
+	break;
       abfd = abfd->my_archive;
     }
 

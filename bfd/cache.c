@@ -241,6 +241,7 @@ bfd_cache_lookup_worker (bfd *abfd, enum cache_flag flag)
     abort ();
 
   if (abfd->my_archive != NULL
+      && abfd != abfd->my_archive
       && !bfd_is_thin_archive (abfd->my_archive))
     abort ();
 

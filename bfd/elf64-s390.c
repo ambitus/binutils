@@ -3932,7 +3932,9 @@ const struct elf_size_info s390_elf64_size_info =
 };
 
 #define TARGET_BIG_SYM	s390_elf64_vec
+#ifndef TARGET_BIG_NAME
 #define TARGET_BIG_NAME	"elf64-s390"
+#endif
 #define ELF_ARCH	bfd_arch_s390
 #define ELF_TARGET_ID	S390_ELF_DATA
 #define ELF_MACHINE_CODE EM_S390
@@ -3977,7 +3979,9 @@ const struct elf_size_info s390_elf64_size_info =
 #define elf_backend_additional_program_headers elf_s390_additional_program_headers
 #define elf_backend_modify_segment_map	      elf_s390_modify_segment_map
 
+#ifndef bfd_elf64_mkobject
 #define bfd_elf64_mkobject		elf_s390_mkobject
+#endif
 #define elf_backend_object_p		elf_s390_object_p
 
 #include "elf64-target.h"
