@@ -1,7 +1,7 @@
 /* IBM z/OS Program Object support
-   Copyright (C) 2018 Rocket Software
-   Contributed by Michael Colavita (mcolavita@rocketsoftware.com)
- 
+   Copyright (C) 2019 Free Software Foundation, Inc.
+   Contributed by Michael Colavita <mcolavita@rocketsoftware.com>.
+
    This file is part of BFD, the Binary File Descriptor library.
 
    This program is free software; you can redistribute it and/or modify
