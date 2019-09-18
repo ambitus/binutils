@@ -28,9 +28,6 @@
 #include "elf/s390.h"
 #include "po-bfd.h"
 
-#include <execinfo.h>
-#include <stdio.h>
-
 static
 const unsigned char iso88591_to_ibm1047[256] = {
 /*         0     1     2     3     4     5     6     7     8     9     A     B     C     D     E     F */
@@ -78,37 +75,37 @@ struct po_s390_obj_tdata
 
   /* Program Object fields below here.  */
   /* High level internal structures */
-  struct po_internal_plmh                   header;
-  struct po_internal_pmar                   pmar;
-  struct po_internal_pmarl                  pmarl;
-  struct po_internal_prat                   prat;
-  struct po_internal_prdt                   prdt;
-  struct po_internal_lidx                   lidx;
-  struct po_internal_psegm                  psegm;
-  struct po_internal_po_name_header         po_name_header;
+  struct po_internal_plmh header;
+  struct po_internal_pmar pmar;
+  struct po_internal_pmarl pmarl;
+  struct po_internal_prat prat;
+  struct po_internal_prdt prdt;
+  struct po_internal_lidx lidx;
+  struct po_internal_psegm psegm;
+  struct po_internal_po_name_header po_name_header;
 
   /* Repeating internal structures TODO: refactor? */
-  struct po_internal_header_rec_decl       *rec_decls;
-  struct po_internal_prdt_page			*prdt_pages;
-  struct po_internal_lidx_entry            *lidx_entries;
-  struct po_internal_psegm_entry           *psegm_entries;
-  struct po_internal_po_name_header_entry  *po_name_header_entries;
-  char                                    **po_names;
-  prat_ent			*prat_entries;
-  char                                     *section_contents;
+  struct po_internal_header_rec_decl *rec_decls;
+  struct po_internal_prdt_page *prdt_pages;
+  struct po_internal_lidx_entry *lidx_entries;
+  struct po_internal_psegm_entry *psegm_entries;
+  struct po_internal_po_name_header_entry *po_name_header_entries;
+  char **po_names;
+  prat_ent *prat_entries;
+  char *section_contents;
 
   /* Computed values */
-  unsigned                                  rec_decl_count;
-  unsigned int                              text_pad_words;
-  bfd_boolean                               headers_computed;
-  bfd_boolean                               sizes_computed;
+  unsigned rec_decl_count;
+  unsigned int text_pad_words;
+  bfd_boolean headers_computed;
+  bfd_boolean sizes_computed;
 
   /* File offset of the start of the elf file. If this is zero then
      there is no contained elf file.  */
-  ufile_ptr			elf_offset;
+  ufile_ptr elf_offset;
 };
 
-#define po_tdata(bfd)		((struct po_s390_obj_tdata *) (bfd)->tdata.any)
+#define po_tdata(bfd) ((struct po_s390_obj_tdata *) (bfd)->tdata.any)
 
 #define po_header(bfd)			(po_tdata (bfd)->header)
 #define po_rec_decls(bfd)		(po_tdata (bfd)->rec_decls)
@@ -437,7 +434,8 @@ po_final_link_relocate (reloc_howto_type *howto,
       full_offset = (input_section->output_section->vma
 		     + input_section->output_offset
 		     + address);
-      if (input_section->flags & SEC_LOAD)
+      if (input_section->flags & SEC_LOAD
+	  && !(value == 0 && addend == 0))
 	add_prdt_entry (input_section->output_section->symbol->the_bfd,
 			howto, input_section, full_offset, value, addend);
       break;
@@ -571,7 +569,6 @@ finalize_header (bfd *abfd)
      and PO_64, in addition to the actual entries for both. PO_32_EXT
      and PO_64_EXT have no headers.  */
   const bfd_vma prdt_offset = file_pos;
-  printf ("prdt_offset: %ld\n", prdt_offset);
   unsigned int prdt_pos = PRDT_BASE_SIZE;
   po_pmarl(abfd).prdt_offset = prdt_offset;
   file_pos += PRDT_BASE_SIZE;
@@ -716,7 +713,6 @@ finalize_header (bfd *abfd)
   po_pmar(abfd).virtual_storage_required = load_size;
   po_pmar(abfd).main_entry_point_offset = bfd_get_start_address (abfd);
   po_pmar(abfd).this_entry_point_offset = bfd_get_start_address (abfd);
-  printf ("offset pmarl: %lx\n", po_pmar(abfd).main_entry_point_offset);
 
   /* Finalize PMARL TODO */
   po_pmarl(abfd).program_length_no_gas = module_size / 0x1000;
@@ -1122,7 +1118,7 @@ fail_free:
 static bfd_boolean
 add_prdt_entry (bfd *abfd,
 		reloc_howto_type *howto,
-		asection *input_section,
+		asection *input_section ATTRIBUTE_UNUSED,
 		bfd_vma offset,
 		bfd_vma value,
 		bfd_vma addend)
@@ -1202,9 +1198,7 @@ add_prdt_entry (bfd *abfd,
     }
 
   /* TODO: conditionalize value? */
-  real_addend = (input_section->output_section->vma
-		 + input_section->output_offset
-		 + addend + value);
+  real_addend = value + addend;
 
   /* Figure out which type of reloc we should use.  */
   switch (howto->type)
