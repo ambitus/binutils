@@ -84,7 +84,9 @@
 #define bfd_elfNN_set_section_contents	_bfd_elf_set_section_contents
 #endif
 #define bfd_elfNN_sizeof_headers	_bfd_elf_sizeof_headers
+#ifndef bfd_elfNN_write_object_contents
 #define bfd_elfNN_write_object_contents _bfd_elf_write_object_contents
+#endif
 #define bfd_elfNN_write_corefile_contents _bfd_elf_write_corefile_contents
 
 #define bfd_elfNN_get_section_contents_in_window \

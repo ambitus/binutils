@@ -147,7 +147,7 @@ struct po_internal_prdt_page {
   bfd_boolean		no_checksum;
 
   /* The list of relocations associated with this page.  */
-  po_internal_relent	*relocs;
+  struct po_internal_relent	*relocs;
 };
 
 struct po_internal_prdt_reloc_header {
