@@ -21,7 +21,7 @@ IREL_IN_PLT=
 # bloated files.
 # z/OS TODO: It might be better to make all bss-style sections resident
 # in the file in the bfd backend somewhere.
-BSS_NAME=data
+BSS_NAME="${RELOCATING+${CREATE_SHLIB-data}${CREATE_SHLIB+bss}}${RELOCATING-bss}"
 
 # Treat a host that matches the target with the possible exception of "x"
 # in the name as if it were native.

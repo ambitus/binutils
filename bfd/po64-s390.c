@@ -400,12 +400,15 @@ po_begin_write_processing (bfd *abfd,
      program object wrapper. To do that, we hack the bfd output
      mechanisms so it appears we are outputting to an archive,
      leaving space for the program object header.  */
-  po_elf_offset (abfd) = 0x1000 * 50;	/* TODO.  */
+  if (bfd_link_executable (link_info))
+    {
+      po_elf_offset (abfd) = 0x1000 * 50;	/* TODO.  */
 
-  BFD_ASSERT (abfd->my_archive == NULL);
-  abfd->my_archive = abfd;
-  //abfd->origin = po_s390_tdata (abfd)->po_header_size;
-  abfd->origin = po_elf_offset (abfd);
+      BFD_ASSERT (abfd->my_archive == NULL);
+      abfd->my_archive = abfd;
+      //abfd->origin = po_s390_tdata (abfd)->po_header_size;
+      abfd->origin = po_elf_offset (abfd);
+    }
 }
 
 /* Special PO relocation processing.
@@ -691,6 +694,9 @@ finalize_header (bfd *abfd)
   /*
   file_pos = (file_pos + 0x1000 - 1) & ~(0x1000 - 1);
   */
+
+  /* If this assert fails, then we have corrupted the elf file.  */
+  BFD_ASSERT (file_pos <= po_elf_offset (abfd));
 
   /* Finalize entry point */
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
@@ -1307,31 +1313,38 @@ po_write_object_contents (bfd *abfd)
   if (!_bfd_elf_write_object_contents (abfd))
     return FALSE;
 
-  /* po_begin_write_processing should have already been called.
-     Undo the archive hack.  */
+  /* z/OS TODO: We actually want to check bfd_link_executable here, but
+     we can't since we don't have a link_info. he current approach might
+     have unintended consequences.  */
+  if (abfd->my_archive != NULL)
+    {
+      /* po_begin_write_processing should have already been called.
+	 Undo the archive hack.  */
 
-  BFD_ASSERT (abfd->my_archive != NULL);
-  abfd->my_archive = NULL;
-  /* arelt_data gets freed by bfd_close.  */
+      abfd->my_archive = NULL;
+      /* arelt_data gets freed by bfd_close.  */
 
-  /* z/OS TODO: merge prep_headers, finalize_header, and output_header.  */
-  if (!po_prep_headers (abfd))
-    return FALSE;
-  if (!finalize_header (abfd))
-    return FALSE;
-  if (!bfd_po_output_header (abfd))
-    return FALSE;
+      /* z/OS TODO: merge prep_headers, finalize_header, and output_header.  */
+      if (!po_prep_headers (abfd))
+	return FALSE;
+      if (!finalize_header (abfd))
+	return FALSE;
+      if (!bfd_po_output_header (abfd))
+	return FALSE;
 
-  if (po_prdt_pages (abfd))
-    free (po_prdt_pages (abfd));
-  if (po_prat_entries (abfd))
-    free (po_prat_entries (abfd));
-  free (po_rec_decls (abfd));
-  free (po_name_header_entries (abfd));
-  free (po_names (abfd)[0]);
-  free (po_names (abfd));
-  free (po_lidx_entries (abfd));
-  free (po_psegm_entries (abfd));
+      for (unsigned int page = 0; page < po_prat (abfd).total_entries; ++page)
+	free (po_prdt_pages (abfd)[page].relocs);
+      if (po_prdt_pages (abfd))
+	free (po_prdt_pages (abfd));
+      if (po_prat_entries (abfd))
+	free (po_prat_entries (abfd));
+      free (po_rec_decls (abfd));
+      free (po_name_header_entries (abfd));
+      free (po_names (abfd)[0]);
+      free (po_names (abfd));
+      free (po_lidx_entries (abfd));
+      free (po_psegm_entries (abfd));
+    }
 
   return TRUE;
 }
