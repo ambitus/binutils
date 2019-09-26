@@ -526,6 +526,7 @@ elf_s390_is_local_label_name (bfd *abfd, const char *name)
    size.  Having a .rela.plt of 2GB would already make the .plt
    section bigger than 8GB.  */
 
+#ifndef elf_s390x_plt_entry
 static const bfd_byte elf_s390x_plt_entry[PLT_ENTRY_SIZE] =
   {
     0xc0, 0x10, 0x00, 0x00, 0x00, 0x00,	    /* larl    %r1,.	   */
@@ -536,6 +537,7 @@ static const bfd_byte elf_s390x_plt_entry[PLT_ENTRY_SIZE] =
     0xc0, 0xf4, 0x00, 0x00, 0x00, 0x00,	    /* jg      first plt   */
     0x00, 0x00, 0x00, 0x00		    /* .long   0x00000000  */
   };
+#endif
 
 /* The first PLT entry pushes the offset into the symbol table
    from R1 onto the stack at 56(15) and the loader object info
@@ -552,6 +554,7 @@ static const bfd_byte elf_s390x_plt_entry[PLT_ENTRY_SIZE] =
 
      Fixup at offset 8: relative address to start of GOT.  */
 
+#ifndef elf_s390x_first_plt_entry
 static const bfd_byte elf_s390x_first_plt_entry[PLT_FIRST_ENTRY_SIZE] =
   {
     0xe3, 0x10, 0xf0, 0x38, 0x00, 0x24,	    /* stg     %r1,56(%r15)	 */
@@ -563,6 +566,7 @@ static const bfd_byte elf_s390x_first_plt_entry[PLT_FIRST_ENTRY_SIZE] =
     0x07, 0x00,				    /* nopr    %r0		 */
     0x07, 0x00				    /* nopr    %r0		 */
   };
+#endif
 
 
 /* s390 ELF linker hash entry.  */
