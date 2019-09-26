@@ -406,7 +406,7 @@ po_begin_write_processing (bfd *abfd,
 
       BFD_ASSERT (abfd->my_archive == NULL);
       abfd->my_archive = abfd;
-      //abfd->origin = po_s390_tdata (abfd)->po_header_size;
+      /* abfd->origin = po_s390_tdata (abfd)->po_header_size;  */
       abfd->origin = po_elf_offset (abfd);
     }
 }
@@ -417,7 +417,7 @@ po_begin_write_processing (bfd *abfd,
    our own howto table, which is possible.
 
    z/OS TODO: we need to forbit pc-relative weak relocs (because they are
-   unimplementable).  */
+   unimplementable for statically linked programs).  */
 
 static bfd_reloc_status_type
 po_final_link_relocate (reloc_howto_type *howto,
@@ -1392,7 +1392,7 @@ static const bfd_byte po_first_plt_entry[32] =
 #define bfd_elf64_bfd_final_link	po_final_link
 
 #define _bfd_final_link_relocate	po_final_link_relocate
-#define elf_s390_mkobject		__attribute__ ((used)) elf_s390_mkobject
+#define elf_s390_mkobject		ATTRIBUTE_UNUSED elf_s390_mkobject
 
 #define s390_elf64_vec			s390_po_vec
 #define TARGET_BIG_NAME			"po64-s390"
