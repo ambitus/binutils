@@ -15,13 +15,10 @@ NO_SMALL_DATA=yes
 EXTRA_EM_FILE=s390
 IREL_IN_PLT=
 
-# NOTE: We merge bss and common symbols into data because we currently
-# can't get the loader to support standard unixy bss behavior where bss
-# symbols don't take up space in the executable. So for now we deal with
-# bloated files.
-# z/OS TODO: It might be better to make all bss-style sections resident
-# in the file in the bfd backend somewhere.
-BSS_NAME="${RELOCATING+${CREATE_SHLIB-data}${CREATE_SHLIB+bss}}${RELOCATING-bss}"
+if [ x${RELOCATING+yes} != xyes ]; then
+  # Output s390 elf for relocatable links
+  OUTPUT_FORMAT="elf64-s390"
+fi
 
 # Treat a host that matches the target with the possible exception of "x"
 # in the name as if it were native.
@@ -43,5 +40,3 @@ case "$target" in
     esac
     ;;
 esac
-
-RELOCATEABLE_OUTPUT_FORMAT="elf64-s390"
