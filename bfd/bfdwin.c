@@ -148,6 +148,8 @@ bfd_get_file_window (bfd *abfd,
 	     && !bfd_is_thin_archive (abfd->my_archive))
 	{
 	  offset += abfd->origin;
+	  if (abfd == abfd->my_archive)
+	    break;
 	  abfd = abfd->my_archive;
 	}
 

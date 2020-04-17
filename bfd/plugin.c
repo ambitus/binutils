@@ -167,6 +167,7 @@ bfd_plugin_open_input (bfd *ibfd, struct ld_plugin_input_file *file)
 
   iobfd = ibfd;
   while (iobfd->my_archive
+	 && iobfd != iobfd->my_archive
 	 && !bfd_is_thin_archive (iobfd->my_archive))
     iobfd = iobfd->my_archive;
   file->name = iobfd->filename;

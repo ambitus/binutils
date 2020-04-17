@@ -3895,7 +3895,7 @@ elf_link_add_object_symbols (bfd *abfd, struct bfd_link_info *info)
 	 the format of the output file.  */
       if (bfd_link_relocatable (info)
 	  || !is_elf_hash_table (htab)
-	  || info->output_bfd->xvec != abfd->xvec)
+	  /* || info->output_bfd->xvec != abfd->xvec  z/OS TODO: proper solution? */)
 	{
 	  if (bfd_link_relocatable (info))
 	    bfd_set_error (bfd_error_invalid_operation);
@@ -4003,7 +4003,7 @@ elf_link_add_object_symbols (bfd *abfd, struct bfd_link_info *info)
 		  && info->nointerp
 		  && (info->export_dynamic || info->dynamic)))
 	  && is_elf_hash_table (htab)
-	  && info->output_bfd->xvec == abfd->xvec
+	  /* &&  info->output_bfd->xvec == abfd->xvec  z/OS TODO: FIX THIS.  */
 	  && !htab->dynamic_sections_created)
 	{
 	  if (! _bfd_elf_link_create_dynamic_sections (abfd, info))
