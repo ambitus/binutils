@@ -1380,13 +1380,11 @@ po_write_object_contents (bfd *abfd)
 /* PLT and GOT stuff. See the z/Linux port for how this works. This
    is mostly the same as for z/Linux, but instead of only being able
    to use r0 and r1, we can only use r0 and r15. Also the symbol
-   table offset is pushed onto the stack at 160(r13), and the
-   loader ino at 168(r13).
+   table offset is pushed onto the stack at 120(r13), and the
+   loader ino at 112(r13).
    NOTE: Keep this in sync with the elf64-s390 version.
 
-   z/OS TODO: Do we want to use those stack addrs? We technically
-   could use the save slots, and 168 is most of a cache line away.
-   Lower offsets would give fewer cache misses in practice.  */
+   z/OS TODO: Do we want to use those stack addrs?  */
 
 static const bfd_byte po_plt_entry[32] =
   {
@@ -1401,9 +1399,9 @@ static const bfd_byte po_plt_entry[32] =
 
 static const bfd_byte po_first_plt_entry[32] =
   {
-   0xe3, 0xf0, 0xd0, 0xa0, 0x00, 0x24,	    /* stg     %r15,160(%r13)	   */
+   0xe3, 0xf0, 0xd0, 0x78, 0x00, 0x24,	    /* stg     %r15,120(%r13)	   */
    0xc0, 0xf0, 0x00, 0x00, 0x00, 0x00,	    /* larl    %r15,.		   */
-   0xd2, 0x07, 0xd0, 0xa8, 0xf0, 0x08,	    /* mvc     168(8,%r13),8(%r15) */
+   0xd2, 0x07, 0xd0, 0x70, 0xf0, 0x08,	    /* mvc     112(8,%r13),8(%r15) */
    0xe3, 0xf0, 0xf0, 0x10, 0x00, 0x04,	    /* lg      %r15,16(%r15)	   */
    0x07, 0xff,				    /* br      %r15		   */
    0x07, 0x00,				    /* nopr    %r0		   */
