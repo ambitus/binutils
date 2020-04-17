@@ -414,6 +414,9 @@
 #ifndef elf_backend_object_p
 #define elf_backend_object_p		0
 #endif
+#ifndef elf_backend_before_object_p
+#define elf_backend_before_object_p	0
+#endif
 #ifndef elf_backend_symbol_processing
 #define elf_backend_symbol_processing	0
 #endif
@@ -780,6 +783,7 @@ static struct elf_backend_data elfNN_bed =
   elf_info_to_howto_rel,
   elf_backend_sym_is_global,
   elf_backend_object_p,
+  elf_backend_before_object_p,
   elf_backend_symbol_processing,
   elf_backend_symbol_table_processing,
   elf_backend_get_symbol_type,

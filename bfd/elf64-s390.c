@@ -3900,6 +3900,27 @@ bfd_elf_s390_set_options (struct bfd_link_info *info,
 }
 
 
+#ifndef s390_elf64_vec
+/* Return TRUE iff relocations for INPUT are compatible with OUTPUT.
+   Allow elf64-s390 inputs to be linked to po64-s390 outputs.  */
+
+static bfd_boolean
+elf_s390_relocs_compatible (const bfd_target *input,
+			    const bfd_target *output)
+{
+  /* z/OS TODO: Figure out a way for this to work without the
+     attribute and the define guard.  */
+  extern const bfd_target s390_elf64_vec;
+  extern const bfd_target s390_po_vec __attribute__ ((weak));
+
+  return (input == &s390_elf64_vec
+	  && (output == &s390_elf64_vec || (&s390_po_vec != NULL
+					    && output == &s390_po_vec)));
+}
+#define elf_backend_relocs_compatible         elf_s390_relocs_compatible
+#endif
+
+
 /* Why was the hash table entry size definition changed from
    ARCH_SIZE/8 to 4? This breaks the 64 bit dynamic linker and
    this is the only reason for the s390_elf64_size_info structure.  */

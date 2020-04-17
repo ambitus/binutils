@@ -385,6 +385,14 @@ init_reloc_header (bfd *abfd,
 static bfd_boolean
 po_mkobject (bfd *abfd)
 {
+  /* Make idempodent for the multiple calls in elf_object_p.
+     z/OS TODO: Make sure that this doesn't break anything like
+     bfd_reinit() or related functionality.  */
+
+  if (abfd->direction == read_direction
+      && abfd->tdata.any != NULL)
+    return TRUE;
+
   return bfd_elf_allocate_object (abfd, sizeof (struct po_s390_obj_tdata),
 				  S390_ELF_DATA);
 }
@@ -400,7 +408,8 @@ po_begin_write_processing (bfd *abfd,
      program object wrapper. To do that, we hack the bfd output
      mechanisms so it appears we are outputting to an archive,
      leaving space for the program object header.  */
-  if (bfd_link_executable (link_info))
+  if (bfd_link_executable (link_info)
+      || bfd_link_dll (link_info))
     {
       po_elf_offset (abfd) = 0x1000 * 50;	/* TODO.  */
 
@@ -408,6 +417,17 @@ po_begin_write_processing (bfd *abfd,
       abfd->my_archive = abfd;
       /* abfd->origin = po_s390_tdata (abfd)->po_header_size;  */
       abfd->origin = po_elf_offset (abfd);
+      /* NOTE: arelt_data is mostly invalid, it's only there to satisfy
+	 a check inside _bfd_generic_get_section_contents.  */
+      abfd->arelt_data = bfd_zmalloc (sizeof (struct areltdata));
+      if (abfd->arelt_data == NULL)
+	abort ();
+      /* arelt_data->parsed_size must be set to bfd_get_size() before
+	 certain other checks occur in the process of writing to file,
+	 which are unrelated to the check mentioned above but
+	 impossible to avoid while arelt_data is nonnull.
+         However, right now bfd_get_size() is zero, so we set it
+	 elsewhere.  */
     }
 }
 
@@ -463,7 +483,15 @@ finalize_header (bfd *abfd)
   unsigned int rec_num = 0;
   unsigned int file_pos = 0;
 
+  /* All pending writes need to be written before bfd_get_size actually
+     reflects the size of the file.  */
+  bfd_flush (abfd);
+
   const bfd_vma fsz = bfd_get_size (abfd);
+
+  /* NOTE: We set arelt_data->parsed_size here as a hack to allow a
+     check in bfd_bread() to suceed.  */
+  ((struct areltdata *) (abfd->arelt_data))->parsed_size = fsz;
 
   /* z/OS TODO: We load the entire elf file right now. Needless to say,
      we need to fix that.  */
@@ -1383,15 +1411,61 @@ static const bfd_byte po_first_plt_entry[32] =
    0x07, 0x00				    /* nopr    %r0		   */
   };
 
+/* Recognize a PIE (maybe a shared libary in the future) as a legitimate
+   input file. We need to be able to link against them.  */
+static bfd_boolean
+po_before_object_p (bfd *abfd)
+{
+  bfd_byte eyecatcher[8];
+  bfd_byte hdr_off_buf[4];
+
+  if (!po_mkobject (abfd))
+    return FALSE;
+
+  /* Check for the Program Object eyecatcher.  */
+  if (bfd_seek (abfd, 0, SEEK_SET) != 0
+      || bfd_bread (eyecatcher, 8, abfd) != 8
+      || memcmp (eyecatcher, eyecatcher_plmh, 8) != 0)
+    {
+      bfd_seek (abfd, 0, SEEK_SET);
+      return FALSE;
+    }
+
+  /* Jump to the part of the Program Object header that points to the
+     contained code.  */
+  if (bfd_seek (abfd, 0x64, SEEK_SET) != 0
+      || bfd_bread (hdr_off_buf, 4, abfd) != 4)
+    return FALSE;
+
+  po_elf_offset (abfd) = bfd_h_get_32 (abfd, hdr_off_buf);
+
+  if (bfd_seek (abfd, po_elf_offset (abfd), SEEK_SET) != 0)
+    return FALSE;
+
+  /* Turn on our archive hack, this time for the read side of things.  */
+  abfd->my_archive = abfd;
+  abfd->origin = po_elf_offset (abfd);
+  /* NOTE: arelt_data is mostly invalid, it's only there to satisfy
+     a check inside _bfd_generic_get_section_contents.  */
+  abfd->arelt_data = bfd_zmalloc (sizeof (struct areltdata));
+  ((struct areltdata *) (abfd->arelt_data))->parsed_size =
+    bfd_get_size (abfd) - po_elf_offset (abfd);
+
+  return TRUE;
+}
+
 #define elf_s390x_plt_entry		po_plt_entry
 #define elf_s390x_first_plt_entry	po_first_plt_entry
 
 #define elf_backend_begin_write_processing	po_begin_write_processing
+#define elf_backend_before_object_p		po_before_object_p
 #define bfd_elf64_mkobject		po_mkobject
 #define bfd_elf64_write_object_contents po_write_object_contents
 #define bfd_elf64_bfd_final_link	po_final_link
 
 #define _bfd_final_link_relocate	po_final_link_relocate
+
+/* Silence some warnings.  */
 #define elf_s390_mkobject		ATTRIBUTE_UNUSED elf_s390_mkobject
 
 #define s390_elf64_vec			s390_po_vec

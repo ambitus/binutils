@@ -907,6 +907,13 @@ struct elf_backend_data
   bfd_boolean (*elf_backend_object_p)
     (bfd *);
 
+  /* Like elf_backend_object_p but run before any of the generic ELF
+     file checks have been performed.  When this is called, assume
+     nothing is set up.  If this returns FALSE, the check_format
+     routine will return a bfd_error_wrong_format error.  */
+  bfd_boolean (*elf_backend_before_object_p)
+    (bfd *);
+
   /* A function to do additional symbol processing when reading the
      ELF symbol table.  This is where any processor-specific special
      section indices are handled.  */

@@ -498,6 +498,16 @@ elf_object_p (bfd *abfd)
   bfd_size_type amt;
   const bfd_target *target;
 
+  /* Do any target-specific preprocessing.  */
+
+  if (abfd->xvec->backend_data)
+    {
+      const struct elf_backend_data *tebd = abfd->xvec->backend_data;
+      if (tebd->elf_backend_before_object_p
+	  && ! (*tebd->elf_backend_before_object_p) (abfd))
+	goto got_wrong_format_error;
+    }
+
   /* Read in the ELF header in external format.  */
 
   if (bfd_bread (&x_ehdr, sizeof (x_ehdr), abfd) != sizeof (x_ehdr))
