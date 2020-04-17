@@ -1455,6 +1455,10 @@ po_before_object_p (bfd *abfd)
 #define elf_s390x_plt_entry		po_plt_entry
 #define elf_s390x_first_plt_entry	po_first_plt_entry
 
+#define elf_backend_can_gc_sections	0  /* z/OS TODO: Remove this and
+					      uncomment that line in
+					      elflink.c when we fix
+					      GC.  */
 #define elf_backend_begin_write_processing	po_begin_write_processing
 #define elf_backend_before_object_p		po_before_object_p
 #define bfd_elf64_mkobject		po_mkobject

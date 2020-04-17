@@ -3968,7 +3968,10 @@ const struct elf_size_info s390_elf64_size_info =
 
 #define elf_backend_size_info		s390_elf64_size_info
 
-#define elf_backend_can_gc_sections	1
+#ifndef elf_backend_can_gc_sections
+/* z/OS TODO: Fix GC so we can remove this ifdef.  */
+# define elf_backend_can_gc_sections	1
+#endif
 #define elf_backend_can_refcount	1
 #define elf_backend_want_got_plt	1
 #define elf_backend_plt_readonly	1

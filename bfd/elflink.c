@@ -13515,7 +13515,8 @@ bfd_elf_gc_sections (bfd *abfd, struct bfd_link_info *info)
   if (!bed->can_gc_sections
       || !is_elf_hash_table (info->hash))
     {
-      _bfd_error_handler(_("warning: gc-sections option ignored"));
+      /* z/OS TODO: Uncomment the next line when we've fixed GC.  */
+      // _bfd_error_handler(_("warning: gc-sections option ignored"));
       return TRUE;
     }
 
