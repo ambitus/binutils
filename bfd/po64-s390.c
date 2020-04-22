@@ -411,7 +411,7 @@ po_begin_write_processing (bfd *abfd,
   if (bfd_link_executable (link_info)
       || bfd_link_dll (link_info))
     {
-      po_elf_offset (abfd) = 0x1000 * 50;	/* TODO.  */
+      po_elf_offset (abfd) = 0x1000 * 500;	/* TODO.  */
 
       BFD_ASSERT (abfd->my_archive == NULL);
       abfd->my_archive = abfd;
