@@ -12,6 +12,7 @@
 # in the file in the bfd backend somewhere.
 if [ x${RELOCATING+yes} != xyes ]; then
   # Use the regular s390 elf linker script for relocatable links
+    OUTPUT_FORMAT="elf64-s390"
   . $srcdir/scripttempl/elf.sc
 else
 

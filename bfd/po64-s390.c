@@ -1429,8 +1429,10 @@ po_before_object_p (bfd *abfd)
       || bfd_bread (eyecatcher, 8, abfd) != 8
       || memcmp (eyecatcher, eyecatcher_plmh, 8) != 0)
     {
+      /* Bow out gracefully but don't stop processing if it isn't a PO,
+	 we implicitly accept regular elf object files later.  */
       bfd_seek (abfd, 0, SEEK_SET);
-      return FALSE;
+      return TRUE;
     }
 
   /* Jump to the part of the Program Object header that points to the
@@ -1455,6 +1457,25 @@ po_before_object_p (bfd *abfd)
 
   return TRUE;
 }
+
+
+#ifndef HAVE_s390_elf64_vec
+# error "This emulation requires s390 elf support to be built"
+#endif
+/* Return TRUE iff relocations for INPUT are compatible with OUTPUT.
+   Allow elf64-s390 inputs to be linked to po64-s390 outputs.  */
+
+static bfd_boolean
+elf_s390_relocs_compatible (const bfd_target *input,
+			    const bfd_target *output)
+{
+  extern const bfd_target s390_elf64_vec;
+  extern const bfd_target s390_po_vec;
+
+  return ((input == &s390_elf64_vec || input == &s390_po_vec)
+	  && (output == &s390_elf64_vec || output == &s390_po_vec));
+}
+#define elf_backend_relocs_compatible	elf_s390_relocs_compatible
 
 #define elf_s390x_plt_entry		po_plt_entry
 #define elf_s390x_first_plt_entry	po_first_plt_entry

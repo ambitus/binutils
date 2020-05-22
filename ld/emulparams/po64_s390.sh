@@ -15,11 +15,6 @@ NO_SMALL_DATA=yes
 EXTRA_EM_FILE=s390
 IREL_IN_PLT=
 
-if [ x${RELOCATING+yes} != xyes ]; then
-  # Output s390 elf for relocatable links
-  OUTPUT_FORMAT="elf64-s390"
-fi
-
 # Treat a host that matches the target with the possible exception of "x"
 # in the name as if it were native.
 if test `echo "$host" | sed -e s/390x/390/` \
