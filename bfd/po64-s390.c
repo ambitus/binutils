@@ -436,7 +436,7 @@ po_begin_write_processing (bfd *abfd,
    z/OS TODO: This is a bit inefficient, but to do better we would need
    our own howto table, which is possible.
 
-   z/OS TODO: we need to forbit pc-relative weak relocs (because they are
+   z/OS TODO: we need to forbid pc-relative weak relocs (because they are
    unimplementable for statically linked programs).  */
 
 static bfd_reloc_status_type
@@ -459,6 +459,10 @@ po_final_link_relocate (reloc_howto_type *howto,
 		     + address);
       if (input_section->flags & SEC_LOAD
 	  && !(value == 0 && addend == 0))
+	/* Have the OS do a runtime relocation.
+	   z/OS TODO: This shouldn't be necessary for non-static
+	   executables, we will be emitting corresponding ELF
+	   relocs for the dynamic linker anyway.  */
 	add_prdt_entry (input_section->output_section->symbol->the_bfd,
 			howto, input_section, full_offset, value, addend);
       break;
