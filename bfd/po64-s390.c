@@ -28,6 +28,13 @@
 #include "elf/s390.h"
 #include "po-bfd.h"
 
+/* Instead of using copy relocs, generate load-time relocations.
+   Note that since we don't have a guaranteed load address, we would
+   need load-time relocs in one form or another to even implement copy
+   relocs. Note that, as always, this is only relevant for
+   position-dependent shared libraries and executables.  */
+#define ELIMINATE_COPY_RELOCS 1
+
 static
 const unsigned char iso88591_to_ibm1047[256] = {
 /*         0     1     2     3     4     5     6     7     8     9     A     B     C     D     E     F */
@@ -1490,7 +1497,25 @@ elf_s390_relocs_compatible (const bfd_target *input,
 #define bfd_elf64_write_object_contents po_write_object_contents
 #define bfd_elf64_bfd_final_link	po_final_link
 
+/* Hook into the elf64_s390 relocation process by redefining a
+   key function.  */
 #define _bfd_final_link_relocate	po_final_link_relocate
+
+static inline bfd_boolean
+po_should_have_dyn_relocs (struct elf_link_hash_entry *h);
+
+/* Check if space should be reserved to propagate the given reloc into
+   the output file.  */
+#define FORCE_DYN_RELOC(info, h, rel)					\
+  (!bfd_link_pic (info)							\
+   && (ELF64_R_TYPE ((rel)->r_info) == R_390_64				\
+       || ELF64_R_TYPE ((rel)->r_info) == R_390_32			\
+       || ELF64_R_TYPE ((rel)->r_info) == R_390_16			\
+       || ELF64_R_TYPE ((rel)->r_info) == R_390_8))
+
+/* Check if H represents a symbol for which FORCE_DYN_RELOC is causing
+   additional dynamic relocs to be generated.  */
+#define SHOULD_HAVE_DYN_RELOCS(h)	po_should_have_dyn_relocs (h)
 
 /* Silence some warnings.  */
 #define elf_s390_mkobject		ATTRIBUTE_UNUSED elf_s390_mkobject
@@ -1500,3 +1525,24 @@ elf_s390_relocs_compatible (const bfd_target *input,
 #define bfd_elf_s390_set_options	po_set_options_dummy
 #define s390_elf64_size_info		po_size_info_dummy
 #include "elf64-s390.c"
+
+/* This must come after including elf64-s390.c so we can use
+   elf_s390_link_hash_entry.  */
+
+static inline bfd_boolean
+po_should_have_dyn_relocs (struct elf_link_hash_entry *h)
+{
+  struct elf_dyn_relocs *p;
+  struct elf_s390_link_hash_entry *eh = (struct elf_s390_link_hash_entry *)h;
+
+  if (eh == NULL)
+    return FALSE;
+
+  for (p = eh->dyn_relocs; p != NULL; p = p->next)
+    {
+      if (p->count - p->pc_count > 0)
+	return TRUE;
+    }
+
+  return FALSE;
+}

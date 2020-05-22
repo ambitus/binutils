@@ -28,6 +28,13 @@
 #include "elf-s390.h"
 #include <stdarg.h>
 
+#ifndef FORCE_DYN_RELOC
+# define FORCE_DYN_RELOC(info, h, rel) (FALSE)
+#endif
+#ifndef SHOULD_HAVE_DYN_RELOCS
+# define SHOULD_HAVE_DYN_RELOCS(h) (FALSE)
+#endif
+
 /* In case we're on a 32-bit machine, construct a 64-bit "-1" value
    from smaller values.  Start with zero, widen, *then* decrement.  */
 #define MINUS_ONE      (((bfd_vma)0) - 1)
@@ -1221,7 +1228,9 @@ elf_s390_check_relocs (bfd *abfd,
 		  && (sec->flags & SEC_ALLOC) != 0
 		  && h != NULL
 		  && (h->root.type == bfd_link_hash_defweak
-		      || !h->def_regular)))
+		      || !h->def_regular))
+	      || ((sec->flags & SEC_ALLOC) != 0
+		  && FORCE_DYN_RELOC (info, h, rel)))
 	    {
 	      struct elf_dyn_relocs *p;
 	      struct elf_dyn_relocs **head;
@@ -1759,6 +1768,9 @@ allocate_dynrelocs (struct elf_link_hash_entry *h,
 	  if (h->dynindx != -1)
 	    goto keep;
 	}
+
+      if (SHOULD_HAVE_DYN_RELOCS (h))
+	goto keep;
 
       eh->dyn_relocs = NULL;
 
@@ -2655,7 +2667,9 @@ elf_s390_relocate_section (bfd *output_bfd,
 		  && ((h->def_dynamic
 		       && !h->def_regular)
 		      || h->root.type == bfd_link_hash_undefweak
-		      || h->root.type == bfd_link_hash_undefined)))
+		      || h->root.type == bfd_link_hash_undefined))
+	      || (FORCE_DYN_RELOC (info, h, rel)
+		  && (relocation != 0 || rel->r_addend != 0)))
 	    {
 	      Elf_Internal_Rela outrel;
 	      bfd_boolean skip, relocate;

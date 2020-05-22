@@ -9,10 +9,10 @@ ARCH="s390:64-bit"
 MACHINE=
 NOP=0x07070707
 TEMPLATE_NAME=elf32
+EXTRA_EM_FILE=po
 GENERATE_SHLIB_SCRIPT=yes
 GENERATE_PIE_SCRIPT=yes
 NO_SMALL_DATA=yes
-EXTRA_EM_FILE=s390
 IREL_IN_PLT=
 
 # Treat a host that matches the target with the possible exception of "x"
