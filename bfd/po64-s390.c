@@ -1494,9 +1494,32 @@ elf_s390_relocs_compatible (const bfd_target *input,
 static inline bfd_boolean
 po_should_have_dyn_relocs (struct elf_link_hash_entry *h);
 
+static inline void
+po_record_got_dyn_reloc (bfd *output_bfd, asection *target_sec,
+			 asection *reloc_sec, bfd_vma relocation,
+			 bfd_vma off)
+{
+  Elf_Internal_Rela outrel;
+  bfd_byte *loc;
+
+  /* Emit ELF reloc.  */
+  outrel.r_offset = (target_sec->output_section->vma
+		     + target_sec->output_offset
+		     + off);
+  outrel.r_info = ELF64_R_INFO (0, R_390_RELATIVE);
+  outrel.r_addend = relocation;
+  loc = reloc_sec->contents;
+  loc += reloc_sec->reloc_count++ * sizeof (Elf64_External_Rela);
+  bfd_elf64_swap_reloca_out (output_bfd, &outrel, loc);
+
+  /* Record PO reloc, to be emitted later.  */
+  add_prdt_entry (output_bfd, (int) R_390_64, outrel.r_offset,
+		  relocation);
+}
+
 /* Check if space should be reserved to propagate the given reloc into
    the output file.  */
-#define FORCE_DYN_RELOC(info, h, rel)					\
+#define FORCE_DYN_RELOC(info, rel)					\
   (!bfd_link_pic (info)							\
    && (ELF64_R_TYPE ((rel)->r_info) == R_390_64				\
        || ELF64_R_TYPE ((rel)->r_info) == R_390_32			\
@@ -1506,6 +1529,20 @@ po_should_have_dyn_relocs (struct elf_link_hash_entry *h);
 /* Check if H represents a symbol for which FORCE_DYN_RELOC is causing
    additional dynamic relocs to be generated.  */
 #define SHOULD_HAVE_DYN_RELOCS(h)	po_should_have_dyn_relocs (h)
+
+/* We define this to show that we are compiling a PDE but we will still
+   be generating runtime relocs for GOT symbols that have been forced
+   local.
+
+   These kinds of relocs are generated and handled manually by special
+   code in the s390 elf backend, for which using FORCE_DYN_RELOC is
+   innapropriate. We need special handling for this case.  */
+#define FAKE_PDE    (TRUE)
+
+#define RECORD_GOT_DYN_RELOC(output_bfd, target_sec, reloc_sec,		\
+			     relocation, off)				\
+  po_record_got_dyn_reloc ((output_bfd), (target_sec), (reloc_sec),	\
+			   (relocation), (off))
 
 /* Silence some warnings.  */
 #define elf_s390_mkobject		ATTRIBUTE_UNUSED elf_s390_mkobject

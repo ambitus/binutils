@@ -28,11 +28,11 @@
 #include "elf-s390.h"
 #include <stdarg.h>
 
-#ifndef FORCE_DYN_RELOC
-# define FORCE_DYN_RELOC(info, h, rel) (FALSE)
-#endif
-#ifndef SHOULD_HAVE_DYN_RELOCS
-# define SHOULD_HAVE_DYN_RELOCS(h) (FALSE)
+#ifndef FAKE_PDE
+# define FAKE_PDE		      (FALSE)
+# define FORCE_DYN_RELOC(info, rel)   (FALSE)
+# define SHOULD_HAVE_DYN_RELOCS(h)    (FALSE)
+# define RECORD_GOT_DYN_RELOC(a, b, c, d, e)    do { } while (0)
 #endif
 
 /* In case we're on a 32-bit machine, construct a 64-bit "-1" value
@@ -1230,7 +1230,7 @@ elf_s390_check_relocs (bfd *abfd,
 		  && (h->root.type == bfd_link_hash_defweak
 		      || !h->def_regular))
 	      || ((sec->flags & SEC_ALLOC) != 0
-		  && FORCE_DYN_RELOC (info, h, rel)))
+		  && FORCE_DYN_RELOC (info, rel)))
 	    {
 	      struct elf_dyn_relocs *p;
 	      struct elf_dyn_relocs **head;
@@ -1689,8 +1689,13 @@ allocate_dynrelocs (struct elf_link_hash_entry *h,
       else if (tls_type == GOT_TLS_GD)
 	htab->elf.srelgot->size += 2 * sizeof (Elf64_External_Rela);
       else if (!UNDEFWEAK_NO_DYNAMIC_RELOC (info, h)
-	       && (bfd_link_pic (info)
-		   || WILL_CALL_FINISH_DYNAMIC_SYMBOL (dyn, 0, h)))
+	       && ((bfd_link_pic (info)
+		    || WILL_CALL_FINISH_DYNAMIC_SYMBOL (dyn, 0, h))
+		   || (FAKE_PDE
+		       && ((!WILL_CALL_FINISH_DYNAMIC_SYMBOL (dyn, 0, h)
+			    && h->root.type != bfd_link_hash_undefweak)
+			   || (bfd_link_pic (info)
+			       && SYMBOL_REFERENCES_LOCAL (info, h))))))
 	htab->elf.srelgot->size += sizeof (Elf64_External_Rela);
     }
   else
@@ -2355,6 +2360,15 @@ elf_s390_relocate_section (bfd *output_bfd,
 		      bfd_put_64 (output_bfd, relocation,
 				  base_got->contents + off);
 		      h->got.offset |= 1;
+		      if (FAKE_PDE
+			  && (!WILL_CALL_FINISH_DYNAMIC_SYMBOL
+			      (dyn, bfd_link_pic (info), h))
+			  && !resolved_to_zero
+			  && (h->root.type != bfd_link_hash_undefweak
+			      || bfd_link_pic (info)))
+			RECORD_GOT_DYN_RELOC (output_bfd, base_got,
+					      htab->elf.srelgot,
+					      relocation, off);
 		    }
 
 		  if ((h->def_regular
@@ -2408,7 +2422,10 @@ elf_s390_relocate_section (bfd *output_bfd,
 		  bfd_put_64 (output_bfd, relocation,
 			      htab->elf.sgot->contents + off);
 
-		  if (bfd_link_pic (info))
+		  if (FAKE_PDE)
+		    RECORD_GOT_DYN_RELOC (output_bfd, htab->elf.sgot,
+					  htab->elf.srelgot, relocation, off);
+		  else if (bfd_link_pic (info))
 		    {
 		      asection *s;
 		      Elf_Internal_Rela outrel;
@@ -2668,7 +2685,7 @@ elf_s390_relocate_section (bfd *output_bfd,
 		       && !h->def_regular)
 		      || h->root.type == bfd_link_hash_undefweak
 		      || h->root.type == bfd_link_hash_undefined))
-	      || (FORCE_DYN_RELOC (info, h, rel)
+	      || (FORCE_DYN_RELOC (info, rel)
 		  && (relocation != 0 || rel->r_addend != 0)))
 	    {
 	      Elf_Internal_Rela outrel;
