@@ -140,8 +140,7 @@ struct po_s390_obj_tdata
   (bfd_bwrite ((buf), sizeof (*buf), abfd) != sizeof (*buf))
 
 static bfd_boolean
-add_prdt_entry (bfd *abfd, reloc_howto_type *howto, asection *input_section,
-		bfd_vma offset, bfd_vma value, bfd_vma addend);
+add_prdt_entry (bfd *abfd, int r_type, bfd_vma offset, bfd_vma addend);
 
 static void
 convert_iso88591_to_ibm1047 (char *ebcdic, char *ascii, bfd_size_type length)
@@ -471,7 +470,7 @@ po_final_link_relocate (reloc_howto_type *howto,
 	   executables, we will be emitting corresponding ELF
 	   relocs for the dynamic linker anyway.  */
 	add_prdt_entry (input_section->output_section->symbol->the_bfd,
-			howto, input_section, full_offset, value, addend);
+			(int) howto->type, full_offset, value + addend);
       break;
 
     default:
@@ -1161,14 +1160,8 @@ fail_free:
    by RELENT, is located at OFFSET from the start of the module.  */
 
 static bfd_boolean
-add_prdt_entry (bfd *abfd,
-		reloc_howto_type *howto,
-		asection *input_section ATTRIBUTE_UNUSED,
-		bfd_vma offset,
-		bfd_vma value,
-		bfd_vma addend)
+add_prdt_entry (bfd *abfd, int r_type, bfd_vma offset, bfd_vma addend)
 {
-  bfd_vma real_addend;
   unsigned int curr;
   struct po_internal_relent *entry;
   bfd_size_type page = offset / 0x1000;
@@ -1242,18 +1235,15 @@ add_prdt_entry (bfd *abfd,
       memcpy (po_prdt_pages (abfd)[page].checksum, no_checksum_val, 4);
     }
 
-  /* TODO: conditionalize value? */
-  real_addend = value + addend;
-
   /* Figure out which type of reloc we should use.  */
-  switch (howto->type)
+  switch (r_type)
     {
     case R_390_32:
-      if (real_addend > 4294967295)
+      if (addend > 4294967295)
 	{
 	  _bfd_error_handler
 	    /* xgettext:c-format */
-	    (_("Addend for 32-bit abs reloc is too large (%lu)"), real_addend);
+	    (_("Addend for 32-bit abs reloc is too large (%lu)"), addend);
 	  bfd_set_error (bfd_error_bad_value);
 	  return FALSE;
 	}
@@ -1307,7 +1297,7 @@ add_prdt_entry (bfd *abfd,
 	      no_checksum_val, 4);
     }
 
-  entry->addend = real_addend;
+  entry->addend = addend;
 
   return TRUE;
 }
