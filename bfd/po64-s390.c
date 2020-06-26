@@ -1353,6 +1353,17 @@ po_write_object_contents (bfd *abfd)
       abfd->my_archive = NULL;
       /* arelt_data gets freed by bfd_close.  */
 
+      /* Make the Elf type ET_DYN, which helps a few programs. We do this
+         after the Elf file is finished being written out to avoid
+	 confusing the Elf backend.  */
+      Elf64_External_Ehdr *ehdr;
+      bfd_byte e_type[sizeof (ehdr->e_type)];
+      bfd_put_16 (abfd, ET_DYN, &e_type[0]);
+      if (bfd_seek (abfd, po_elf_offset (abfd) + EI_NIDENT, SEEK_SET) != 0
+	  || bfd_bwrite (&e_type[0],
+			 sizeof (ehdr->e_type), abfd) != sizeof (ehdr->e_type))
+	return FALSE;
+
       /* z/OS TODO: merge prep_headers, finalize_header, and output_header.  */
       if (!po_prep_headers (abfd))
 	return FALSE;
