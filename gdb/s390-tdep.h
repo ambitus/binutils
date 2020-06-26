@@ -22,6 +22,12 @@
 
 #include "prologue-value.h"
 
+#ifdef __ZOS__
+constexpr int target_zos = 1;
+#else
+constexpr int target_zos = 0;
+#endif
+
 enum s390_abi_kind
 {
   ABI_NONE,

@@ -486,4 +486,15 @@ case ${gdb_host} in
 		;;
 	esac
 	;;
+    zos)
+	case ${gdb_host_cpu} in
+	    s390)
+		NAT_FILE='config/nm-linux.h'
+		NATDEPFILES='inf-ptrace.o fork-child.o fork-inferior.o \
+		zos-nat.o'
+		NAT_CDEPS='$(srcdir)/proc-service.list'
+		LOADLIBES='-ldl $(RDYNAMIC)'
+		;;
+	esac
+	;;
 esac

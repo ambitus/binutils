@@ -329,6 +329,16 @@ case "${target}" in
 			ipa_obj="${ipa_obj} s390x-tevx-linux64-ipa.o"
 			ipa_obj="${ipa_obj} s390x-gs-linux64-ipa.o"
 			;;
+  s390*-*-zos*-gnu)	echo "Error: gdbserver for z/OS is disabled."
+			exit 1
+			srv_regobj=""
+			srv_tgtobj="zos-low.o fork-child.o fork-inferior.o"
+			srv_xmlfiles=""
+			srv_linux_usrregs=no
+			srv_linux_regsets=no
+			srv_linux_thread_db=yes
+			ipa_obj="zos-ipa.o"
+			;;
   sh*-*-linux*)		srv_regobj=reg-sh.o
 			srv_tgtobj="$srv_linux_obj linux-sh-low.o"
 			srv_linux_usrregs=yes

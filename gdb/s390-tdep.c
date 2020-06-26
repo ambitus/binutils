@@ -48,7 +48,8 @@ static char *s390_disassembler_options;
 
 /* Breakpoints.  */
 
-constexpr gdb_byte s390_break_insn[] = { 0x0, 0x1 };
+constexpr gdb_byte s390_break_insn[] = { target_zos ? 0x0a : 0x0,
+					 target_zos ? 0x90 : 0x1 };
 
 typedef BP_MANIPULATION (s390_break_insn) s390_breakpoint;
 
@@ -6948,13 +6949,17 @@ s390_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   set_gdbarch_breakpoint_kind_from_pc (gdbarch, s390_breakpoint::kind_from_pc);
   set_gdbarch_sw_breakpoint_from_kind (gdbarch, s390_breakpoint::bp_from_kind);
 
-  /* Displaced stepping.  */
-  set_gdbarch_displaced_step_copy_insn (gdbarch,
-					s390_displaced_step_copy_insn);
-  set_gdbarch_displaced_step_fixup (gdbarch, s390_displaced_step_fixup);
-  set_gdbarch_displaced_step_location (gdbarch, linux_displaced_step_location);
-  set_gdbarch_displaced_step_hw_singlestep (gdbarch, s390_displaced_step_hw_singlestep);
-  set_gdbarch_software_single_step (gdbarch, s390_software_single_step);
+  if (!target_zos)
+    {
+      /* Displaced stepping.  */
+      set_gdbarch_displaced_step_copy_insn (gdbarch,
+					    s390_displaced_step_copy_insn);
+      set_gdbarch_displaced_step_fixup (gdbarch, s390_displaced_step_fixup);
+      set_gdbarch_displaced_step_location (gdbarch, linux_displaced_step_location);
+      set_gdbarch_displaced_step_hw_singlestep (gdbarch,
+						s390_displaced_step_hw_singlestep);
+      set_gdbarch_software_single_step (gdbarch, s390_software_single_step);
+    }
   set_gdbarch_max_insn_length (gdbarch, S390_MAX_INSTR_SIZE);
 
   /* Prologue analysis.  */
@@ -6990,8 +6995,15 @@ s390_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   set_gdbarch_return_value (gdbarch, s390_return_value);
 
   /* Frame handling.  */
-  /* Stack grows downward.  */
-  set_gdbarch_inner_than (gdbarch, core_addr_lessthan);
+
+  if (target_zos)
+    /* Depends on ABI of the function in question.
+       z/OS TODO: can we make this more general?  */
+    set_gdbarch_inner_than (gdbarch, core_addr_greaterthan);
+  else
+    /* Stack grows downward.  */
+    set_gdbarch_inner_than (gdbarch, core_addr_lessthan);
+
   set_gdbarch_stack_frame_destroyed_p (gdbarch, s390_stack_frame_destroyed_p);
   dwarf2_frame_set_init_reg (gdbarch, s390_dwarf2_frame_init_reg);
   dwarf2_frame_set_adjust_regnum (gdbarch, s390_adjust_frame_regnum);
