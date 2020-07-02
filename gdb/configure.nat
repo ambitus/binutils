@@ -489,7 +489,7 @@ case ${gdb_host} in
     zos)
 	case ${gdb_host_cpu} in
 	    s390)
-		NAT_FILE='config/nm-linux.h'
+		NAT_FILE='config/nm-zos.h'
 		NATDEPFILES='inf-ptrace.o fork-child.o fork-inferior.o \
 		zos-nat.o'
 		NAT_CDEPS='$(srcdir)/proc-service.list'

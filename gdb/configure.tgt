@@ -519,7 +519,7 @@ s390*-*-linux*)
 
 s390*-*-zos*-gnu*)
 	# Target: S390 running z/OS
-	gdb_target_obs="s390-zos-tdep.o s390-tdep.o solib-svr4.o \
+	gdb_target_obs="zos-tdep.o s390-tdep.o solib-svr4.o \
 			symfile-mem.o"
 	# build_gdbserver=yes
 	;;

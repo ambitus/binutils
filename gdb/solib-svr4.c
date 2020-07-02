@@ -2573,6 +2573,12 @@ svr4_exec_displacement (CORE_ADDR *displacementp)
   if ((bfd_get_file_flags (exec_bfd) & DYNAMIC) == 0)
     return 0;
 
+#ifdef __ZOS__
+  /* z/OS TODO: This ifdef should be temporary, figure out a better
+     long-term solution.  */
+  exec_displacement = zos_get_load_addr ();
+  if (0) read_program_headers_from_bfd (NULL, NULL);  /* silence a warning.  */
+#else
   if (target_auxv_search (current_top_target (), AT_ENTRY, &entry_point) <= 0)
     return 0;
 
@@ -2902,6 +2908,7 @@ svr4_exec_displacement (CORE_ADDR *displacementp)
       if (!ok)
 	return 0;
     }
+#endif  /* !__ZOS__  */
 
   if (info_verbose)
     {
