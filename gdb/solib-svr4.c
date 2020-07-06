@@ -431,6 +431,7 @@ read_program_header (int type, int *p_sect_size, int *p_arch_size,
   gdb_byte *buf;
   int pt_phdr_p = 0;
 
+#ifndef __ZOS__
   /* Get required auxv elements from target.  */
   if (target_auxv_search (current_top_target (), AT_PHDR, &at_phdr) <= 0)
     return 0;
@@ -438,6 +439,11 @@ read_program_header (int type, int *p_sect_size, int *p_arch_size,
     return 0;
   if (target_auxv_search (current_top_target (), AT_PHNUM, &at_phnum) <= 0)
     return 0;
+#else
+  /* z/OS TODO: Avoid this ifdef.  */
+  if (!zos_get_elf_info (&at_phdr, &at_phent, &at_phnum))
+    return 0;
+#endif
   if (!at_phdr || !at_phnum)
     return 0;
 

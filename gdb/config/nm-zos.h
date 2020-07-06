@@ -23,5 +23,6 @@
 #include "common-types.h"
 
 extern CORE_ADDR zos_get_load_addr (void);
+extern bool zos_get_elf_info (CORE_ADDR *, CORE_ADDR *, CORE_ADDR *);
 
 #endif

@@ -762,6 +762,7 @@ case "${targ}" in
 m68*-*-openbsd* | m88*-*-openbsd* | vax-*-openbsd*) ;;
 *-*-openbsd*)	gdb_osabi=GDB_OSABI_OPENBSD ;;
 *-*-solaris*)	gdb_osabi=GDB_OSABI_SOLARIS ;;
+s390*-*-zos*)	gdb_osabi=GDB_OSABI_ZOS ;;
 *-*-*-gnu*)	;; # prevent non-GNU kernels to match the Hurd rule below
 *-*-gnu*)	gdb_osabi=GDB_OSABI_HURD ;;
 *-*-mingw32ce*)	gdb_osabi=GDB_OSABI_WINCE ;;

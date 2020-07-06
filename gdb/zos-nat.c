@@ -29,12 +29,18 @@
 #include "regset.h"
 #include <sys/ptrace.h>
 #include "s390-tdep.h"
+#include "elf/external.h"
+#include "elf/common.h"
 
 /* Some ptrace constants that might not have a definition in the
    C library. Values correspond to PT_PSW0 and PT_PSW1 from
    the assembler services manual for USS.  */
 #define PTRACE_READ_PSWM	40
 #define PTRACE_READ_PSWA	41
+
+/* The OS limits most requests dealing with buffers to a fixed maximum
+   size per operation.  */
+#define PTRACE_BUFF_SIZE_MAX	64000
 
 /* type of a thread id.  */
 typedef uint64_t ztid_t;
@@ -232,7 +238,8 @@ zos_nat_target::wait (ptid_t ptid, struct target_waitstatus *ourstatus,
   return wptid;
 }
 
-/* Get info about the primary load module.  */
+/* Get info about the primary load module.
+   z/OS TODO: Make this cache per-inferior.  */
 
 CORE_ADDR
 zos_get_load_addr (void)
@@ -240,8 +247,7 @@ zos_get_load_addr (void)
   struct __ptrace_ldinfo *info;
   int ret;
   pid_t pid = inferior_ptid.pid ();
-  size_t bufsz = sizeof (struct __ptrace_ldinfo);
-  const size_t maxbuf = 64000;	/* OS-imposed max.  */
+  size_t bufsz = sizeof (struct __ptrace_ldinfo) * 2;
   CORE_ADDR origin;
 
   if (debug_zos_nat)
@@ -258,10 +264,11 @@ zos_get_load_addr (void)
   while (true)
     {
       /* Retry until the buffer is large enough.  */
-      ret = ptrace_retry (PT_LDINFO, pid, info, bufsz, 0L);
-      if (ret == 0 || bufsz == maxbuf)
+      ret = ptrace_retry (PT_LDINFO, pid, info,
+			  static_cast<int32_t>(bufsz), 0L);
+      if (ret == 0 || bufsz == PTRACE_BUFF_SIZE_MAX)
 	break;
-      bufsz = std::min (bufsz * 4, maxbuf);
+      bufsz = std::min<size_t>(bufsz * 4, PTRACE_BUFF_SIZE_MAX);
       info = static_cast<struct __ptrace_ldinfo *>(xrealloc (info,
 							     bufsz));
     }
@@ -271,12 +278,67 @@ zos_get_load_addr (void)
 
   origin = info->text_origin;
   xfree (info);
+
+  /* z/OS TODO: should include filename and PID.  */
+  fprintf_unfiltered (gdb_stdlog,
+		     _("Main module loaded at: 0x%016lx\n"), origin);
+  gdb_flush (gdb_stdout);
   /* z/OS TODO: Is the initial load module always the first load module?  */
 
   return origin;
 }
 
-/* Generate a fake auxv for the inferior and xfer it.  */
+bool
+zos_get_elf_info (CORE_ADDR *at_phdr, CORE_ADDR *at_phent,
+		  CORE_ADDR *at_phnum)
+{
+  /* z/OS TODO: For now our elf header is always at our load address,
+     but that's an implementation detail. Figure out a more robust
+     way to find it.
+     z/OS TODO: Getting the load addr all over again is wasteful.
+     at this point we've aleady fetched it once. Cache it.  */
+  gdb_byte ehdr[sizeof (Elf64_External_Ehdr)];
+  size_t ent_off, num_off;
+  CORE_ADDR phdr, phent, phnum;
+  enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch ());
+
+  phdr = zos_get_load_addr ();
+
+  if (phdr == 0)
+    return false;
+
+  if (!target_read_memory (phdr, ehdr, sizeof (Elf64_External_Ehdr)))
+    return false;
+
+  /* Validate (just check magic bytes).   */
+  if (ehdr[EI_MAG0] != ELFMAG0
+      || ehdr[EI_MAG1] != ELFMAG1
+      || ehdr[EI_MAG2] != ELFMAG2
+      || ehdr[EI_MAG3] != ELFMAG3)
+    return false;
+
+  if (ehdr[EI_CLASS] != ELFCLASS32)
+    {
+      ent_off = offsetof (Elf64_External_Ehdr, e_phentsize);
+      num_off = offsetof (Elf64_External_Ehdr, e_phnum);
+    }
+  else
+    {
+      ent_off = offsetof (Elf32_External_Ehdr, e_phentsize);
+      num_off = offsetof (Elf32_External_Ehdr, e_phnum);
+    }
+
+  phent = extract_unsigned_integer (ehdr + ent_off, 2, byte_order);
+  phnum = extract_unsigned_integer (ehdr + num_off, 2, byte_order);
+
+  *at_phdr = phdr;
+  *at_phent = phent;
+  *at_phnum = phnum;
+
+  return true;
+}
+
+/* Generate a fake auxv for the inferior.  */
 
 static enum target_xfer_status
 xfer_fake_auxv (gdb_byte *readbuf,
@@ -287,6 +349,59 @@ xfer_fake_auxv (gdb_byte *readbuf,
   /* z/OS TODO: this.  */
   warning (_("TARGET_OBJECT_AUXV not yet implmented for z/OS"));
   return TARGET_XFER_UNAVAILABLE;
+}
+
+/* Transfer data via ptrace into process PID's memory from WRITEBUF, or
+   from process PID's memory into READBUF.  Start at target address ADDR
+   and transfer up to LEN bytes.  Exactly one of READBUF and WRITEBUF
+   must be non-null. Stores the number of transfered bytes into
+   XFERED_LEN.  */
+
+static enum target_xfer_status
+zos_xfer_memory (gdb_byte *readbuf,
+		 const gdb_byte *writebuf,
+		 ULONGEST addr, ULONGEST len,
+		 ULONGEST *xfered_len)
+{
+  pid_t pid = inferior_ptid.pid ();
+  enum __ptrace_request req = readbuf ? PT_READ_BLOCK : PT_WRITE_BLOCK;
+  gdb_byte *buf = readbuf ? readbuf : const_cast<gdb_byte *>(writebuf);
+  ULONGEST n = 0;
+
+  /* z/OS TODO: Check if we've captured any of the requested memory.  */
+
+  /* The ptrace operations we use here have a max buffer size, so
+     transfer in chunks.  */
+  while (n < len)
+    {
+      size_t chunk = std::min<ULONGEST>(len - n, PTRACE_BUFF_SIZE_MAX);
+      printf ("(%lx, %lu, %p)\n", addr + n, chunk, buf + n); fflush (NULL);
+
+      errno = 0;
+      ptrace_retry (req, pid, addr + n, chunk, buf + n);
+      if (errno)
+	{
+	  if (debug_zos_nat)
+	    perror_with_name ("ptrace memory transfer");
+	  break;
+	}
+      n += chunk;
+    }
+
+  *xfered_len = n;
+
+  if (n == len)
+    return TARGET_XFER_OK;
+  else
+    {
+      if (debug_zos_nat)
+	fprintf_unfiltered (gdb_stdlog,
+			    "z/OS memory transfer of length %lu failed"
+			    "for addr %lx, transferred %lu bytes\n",
+			    len, addr, n);
+      /* z/OS TODO: Should we do a memory_error() here?  */
+      return TARGET_XFER_E_IO;
+    }
 }
 
 /* Implement the "xfer_partial" target_ops method.  */
@@ -317,8 +432,14 @@ zos_nat_target::xfer_partial (enum target_object object,
       return TARGET_XFER_UNAVAILABLE;
 
     case TARGET_OBJECT_MEMORY:
-      warning (_("TARGET_OBJECT_MEMORY not yet implmented for z/OS"));
-      return TARGET_XFER_UNAVAILABLE;
+      /* The target is connected but no live inferior is selected.  Pass
+	 this request down to a lower stratum (e.g., the executable
+	 file).  */
+      if (inferior_ptid == null_ptid)
+	return TARGET_XFER_EOF;
+
+      return zos_xfer_memory (readbuf, writebuf,
+			      offset, len, xfered_len);
 
     default:
       return inf_ptrace_target::xfer_partial (object, annex, readbuf,
@@ -335,8 +456,8 @@ static void
 fetch_regs (struct regcache *regcache, int tid)
 {
   half_gregset_t half_regs;
-  uint32_t val;
-  gdb_byte buf[4];
+  ULONGEST pswa, pswm;
+  gdb_byte buf[8];
   enum bfd_endian byte_order = gdbarch_byte_order (regcache->arch ());
 
   /* z/OS TODO: Eventually, we should use a PT_READ_GPR blockreq to
@@ -354,25 +475,26 @@ fetch_regs (struct regcache *regcache, int tid)
   regcache_supply_regset (&zos_high_gregset, regcache, -1, &half_regs,
 			  sizeof (half_regs));
 
-  /* Only way to know if an error occurred for these is to check
-     errno.  */
   errno = 0;
-  val = static_cast<uint32_t>(ptrace_retry (PT_READ_GPR, tid,
-					    PTRACE_READ_PSWM, 0L, 0L));
-  if (errno != 0)
-    perror_with_name ("Couldn't get pswm");
-
-  store_unsigned_integer (buf, 4, byte_order, val);
-  regcache->raw_supply (S390_PSWM_REGNUM, buf);
-
-  errno = 0;
-  val = static_cast<uint32_t>(ptrace_retry (PT_READ_GPR, tid,
-					    PTRACE_READ_PSWA, 0L, 0L));
+  pswa = ptrace_retry (PT_READ_GPR, tid, PTRACE_READ_PSWA, 0L, 0L);
   if (errno != 0)
     perror_with_name ("Couldn't get pswa");
 
-  store_unsigned_integer (buf, 4, byte_order, val);
+  store_unsigned_integer (buf, 8, byte_order, pswa & 0x7fffffff);
   regcache->raw_supply (S390_PSWA_REGNUM, buf);
+
+  /* Only way to know if an error occurred for these is to check
+     errno.  */
+  errno = 0;
+  pswm = ptrace_retry (PT_READ_GPR, tid, PTRACE_READ_PSWM, 0L, 0L);
+  if (errno != 0)
+    perror_with_name ("Couldn't get pswm");
+
+  /* z/OS TODO: How are we supposed to massage the pswm?  */
+  store_unsigned_integer (buf, 8, byte_order,
+			  (pswm << 32) | (pswa & 0x80000000));
+  regcache->raw_supply (S390_PSWM_REGNUM, buf);
+
 }
 
 /* Fetch register REGNUM from the child process.  If REGNUM is -1, do

@@ -336,6 +336,14 @@ s390_software_single_step (struct regcache *regcache)
   return {loc};
 }
 
+static std::vector<CORE_ADDR>
+zos_software_single_step (struct regcache *regcache)
+{
+  CORE_ADDR loc = regcache_read_pc (regcache);
+
+  return {loc + 2, loc + 4, loc + 6};
+}
+
 /* Displaced stepping.  */
 
 /* Return true if INSN is a non-branch RIL-b or RIL-c format
@@ -6960,6 +6968,11 @@ s390_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 						s390_displaced_step_hw_singlestep);
       set_gdbarch_software_single_step (gdbarch, s390_software_single_step);
     }
+  else
+    {
+      set_gdbarch_software_single_step (gdbarch, zos_software_single_step);
+    }
+
   set_gdbarch_max_insn_length (gdbarch, S390_MAX_INSTR_SIZE);
 
   /* Prologue analysis.  */
