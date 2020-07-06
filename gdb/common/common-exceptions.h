@@ -129,7 +129,11 @@ struct gdb_exception
    spurious code between the TRY and the CATCH block.  */
 #define GDB_XCPT_RAW_TRY 3
 
+#ifndef __ZOS__
 #define GDB_XCPT GDB_XCPT_TRY
+#else
+#define GDB_XCPT GDB_XCPT_SJMP	/* z/OS TODO: Remove this when exceptions work.  */
+#endif
 
 /* Functions to drive the sjlj-based exceptions state machine.  Though
    declared here by necessity, these functions should be considered
@@ -288,7 +292,8 @@ struct gdb_exception_RETURN_MASK_QUIT : public gdb_exception_RETURN_MASK_ALL
 {
 };
 
-#endif /* GDB_XCPT_TRY || GDB_XCPT_RAW_TRY */
+/* z/OS TODO: revert all changes to this file when exceptions work.  */
+// #endif /* GDB_XCPT_TRY || GDB_XCPT_RAW_TRY */
 
 /* An exception type that inherits from both std::bad_alloc and a gdb
    exception.  This is necessary because operator new can only throw
@@ -308,6 +313,8 @@ struct gdb_quit_bad_alloc
     *self = ex;
   }
 };
+/* z/OS TODO: revert all changes to this file when exceptions work.  */
+#endif /* GDB_XCPT_TRY || GDB_XCPT_RAW_TRY */
 
 /* *INDENT-ON* */
 

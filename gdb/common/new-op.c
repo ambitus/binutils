@@ -68,7 +68,12 @@ operator new (std::size_t sz)
 	{
 	  do_cleanups (all_cleanups ());
 
+#ifndef __ZOS__
 	  throw gdb_quit_bad_alloc (ex);
+#else
+	  /* z/OS TODO: remove this case when exceptions work.  */
+	  exit (99);
+#endif
 	}
       END_CATCH
     }
