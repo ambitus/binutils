@@ -1466,35 +1466,6 @@ po_before_object_p (bfd *abfd)
   return TRUE;
 }
 
-/* Force the linker to reserved zeroed space in the output file for all
-   sections that do not have contents but should still take up space in
-   the loaded process image (e.g. .bss).  */
-
-static bfd_boolean
-po_elf_section_flags (flagword *flags, const Elf_Internal_Shdr * hdr)
-{
-  /* We probably only need to check for NOBITS, but check ALLOC
-     anyway.  */
-  if (hdr->sh_type == SHT_NOBITS
-      && (hdr->sh_flags & SHF_ALLOC) != 0)
-    *flags |= SEC_LOAD;
-
-  return TRUE;
-}
-
-/* When the linker creates a new section, force it  to reserve zeroed
-   space in the output file for all sections that do not have contents
-   but should still take up space in the loaded process image
-   (e.g. .bss).  */
-
-static bfd_boolean
-po_elf_new_section_hook (bfd *abfd, asection *sec)
-{
-  if ((sec->flags & SEC_ALLOC) != 0)
-    sec->flags |= SEC_LOAD;
-
-  return _bfd_elf_new_section_hook (abfd, sec);
-}
 
 #ifndef HAVE_s390_elf64_vec
 # error "This emulation requires s390 elf support to be built"
@@ -1523,8 +1494,6 @@ elf_s390_relocs_compatible (const bfd_target *input,
 					      GC.  */
 #define elf_backend_begin_write_processing	po_begin_write_processing
 #define elf_backend_before_object_p		po_before_object_p
-#define elf_backend_section_flags		po_elf_section_flags
-#define bfd_elf64_new_section_hook		po_elf_new_section_hook
 #define bfd_elf64_mkobject		po_mkobject
 #define bfd_elf64_write_object_contents po_write_object_contents
 #define bfd_elf64_bfd_final_link	po_final_link

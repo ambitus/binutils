@@ -3269,13 +3269,8 @@ elf_fake_sections (bfd *abfd, asection *asect, void *fsarg)
 	 allow the link to proceed.  This can happen when users link
 	 non-bss input sections to bss output sections, or emit data
 	 to a bss output section via a linker script.  */
-#ifndef HAVE_s390_po_vec  /* This isn't a problem for some targets.  */
-      /* z/OS TODO: Better way to check than this ifdef?
-         It disables the warning for ALL targets when we compile in
-         PO support, which isn't desireable.  */
       _bfd_error_handler
 	(_("warning: section `%pA' type changed to PROGBITS"), asect);
-#endif
       this_hdr->sh_type = sh_type;
     }
 
