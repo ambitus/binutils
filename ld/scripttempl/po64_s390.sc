@@ -4,19 +4,13 @@
 # are permitted in any medium without royalty provided the copyright
 # notice and this notice are preserved.
 
-# NOTE: We merge bss and common symbols into data because we currently
-# can't get the OS loader to support standard unixy bss behavior where
-# bss symbols don't take up space in the executable. So for now we deal
-# with bloated files.
-# z/OS TODO: It might be better to make all bss-style sections resident
-# in the file in the bfd backend somewhere.
 if [ x${RELOCATING+yes} != xyes ]; then
   # Use the regular s390 elf linker script for relocatable links
     OUTPUT_FORMAT="elf64-s390"
   . $srcdir/scripttempl/elf.sc
 else
 
-# Just the elf.sc script modified to put bss into data
+# Just the elf.sc script modified to close a hole in the program image
 
 if test -n "$NOP"; then
   FILL="=$NOP"
@@ -547,15 +541,6 @@ cat <<EOF
     ${RELOCATING+${DATA_START_SYMBOLS}}
     *(.data${RELOCATING+ .data.* .gnu.linkonce.d.*})
     ${CONSTRUCTING+SORT(CONSTRUCTORS)}
-   ${RELOCATING+*(.dynbss)}
-   *(.${BSS_NAME}${RELOCATING+ .${BSS_NAME}.* .gnu.linkonce.b.*})
-   *(COMMON)
-   /* Align here to ensure that the .bss section occupies space up to
-      _end.  Align after .bss to ensure correct alignment even if the
-      .bss section disappears because there are no input sections.
-      FIXME: Why do we need it? When there is no .bss section, we don't
-      pad the .data section.  */
-   ${RELOCATING+. = ALIGN(. != 0 ? ${ALIGNMENT} : 1);}
   }
   .data1        ${RELOCATING-0} : { *(.data1) }
   ${WRITABLE_RODATA+${RODATA}}
@@ -576,6 +561,15 @@ cat <<EOF
   ${BSS_PLT+${PLT}}
   .${BSS_NAME}          ${RELOCATING-0} :
   {
+   ${RELOCATING+*(.dynbss)}
+   *(.${BSS_NAME}${RELOCATING+ .${BSS_NAME}.* .gnu.linkonce.b.*})
+   *(COMMON)
+   /* Align here to ensure that the .bss section occupies space up to
+      _end.  Align after .bss to ensure correct alignment even if the
+      .bss section disappears because there are no input sections.
+      FIXME: Why do we need it? When there is no .bss section, we don't
+      pad the .data section.  */
+   ${RELOCATING+. = ALIGN(. != 0 ? ${ALIGNMENT} : 1);}
   }
   ${OTHER_BSS_SECTIONS}
   ${LARGE_BSS_AFTER_BSS+${LARGE_BSS}}
