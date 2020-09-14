@@ -28,6 +28,8 @@
 #include "elf/s390.h"
 #include "po-bfd.h"
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
+
 /* Instead of using copy relocs, generate load-time relocations.
    Note that since we don't have a guaranteed load address, we would
    need load-time relocs in one form or another to even implement copy
@@ -138,6 +140,28 @@ struct po_s390_obj_tdata
 
 #define write_ext(buf, abfd)					\
   (bfd_bwrite ((buf), sizeof (*buf), abfd) != sizeof (*buf))
+
+static bfd_boolean
+full_write (const void *buf, bfd_size_type size, bfd *abfd)
+{
+  bfd_size_type res;
+  while ((res = bfd_bwrite (buf, size, abfd)) == -1UL
+	 && errno == EINTR);
+  if (res != size)
+    return FALSE;
+  return TRUE;
+}
+
+static bfd_boolean
+full_read (void *buf, bfd_size_type size, bfd *abfd)
+{
+  bfd_size_type res;
+  while ((res = bfd_bread (buf, size, abfd)) == -1UL
+	 && errno == EINTR);
+  if (res != size)
+    return FALSE;
+  return TRUE;
+}
 
 static bfd_boolean
 add_prdt_entry (bfd *abfd, int r_type, bfd_vma offset, bfd_vma addend);
@@ -417,7 +441,7 @@ po_begin_write_processing (bfd *abfd,
   if (bfd_link_executable (link_info)
       || bfd_link_dll (link_info))
     {
-      po_elf_offset (abfd) = 0x1000 * 500;	/* TODO.  */
+      po_elf_offset (abfd) = 0;
 
       BFD_ASSERT (abfd->my_archive == NULL);
       abfd->my_archive = abfd;
@@ -426,15 +450,89 @@ po_begin_write_processing (bfd *abfd,
       /* NOTE: arelt_data is mostly invalid, it's only there to satisfy
 	 a check inside _bfd_generic_get_section_contents.  */
       abfd->arelt_data = bfd_zmalloc (sizeof (struct areltdata));
+      /* arelt_data->parsed_size must be set before a check in bfd_bread
+	 can succeed, which is unrelated to the check mentioned above but
+	 impossible to avoid while arelt_data is nonnull.  */
+      arelt_size (abfd) = -1UL;
       if (abfd->arelt_data == NULL)
 	abort ();
-      /* arelt_data->parsed_size must be set to bfd_get_size() before
-	 certain other checks occur in the process of writing to file,
-	 which are unrelated to the check mentioned above but
-	 impossible to avoid while arelt_data is nonnull.
-         However, right now bfd_get_size() is zero, so we set it
-	 elsewhere.  */
     }
+}
+
+/* Shift the written contents of the BFD down by the specified
+   number of bytes. Shifts from po_elf_offset to the end of the
+   file.  */
+
+static bfd_boolean
+shift_contents_down (bfd *abfd, ufile_ptr shift)
+{
+  ufile_ptr size;
+  char *buf;
+  bfd_size_type this_size;
+
+  /* Flush pending I/O so bfd_get_size is accurate.  */
+  bfd_flush (abfd);
+
+  if ((size = bfd_get_size (abfd)) == 0)
+    {
+      bfd_set_error (bfd_error_file_truncated);
+      return FALSE;
+    }
+
+  /* This size seems to work well.  */
+  const bfd_size_type bufsize = min (0x8000, size);
+
+  if (!(buf = bfd_malloc (bufsize)))
+    return FALSE;
+
+  const ufile_ptr offset = 0;
+  ufile_ptr cursor = size;
+
+  while (cursor > offset)
+    {
+      this_size = min (bufsize, cursor - offset);
+
+      cursor -= this_size;
+
+      if (bfd_seek (abfd, cursor, SEEK_SET) < 0)
+	return FALSE;
+
+      if (!full_read (buf, this_size, abfd))
+	goto fail_truncated;
+
+      if (bfd_seek (abfd, cursor + shift, SEEK_SET) != 0)
+        goto fail_truncated;
+
+      if (!full_write (buf, this_size, abfd))
+	goto fail_truncated;
+    }
+
+  BFD_ASSERT (cursor == offset);
+
+  /* Zero the space between the start start of the file and where the
+     start of the file has been shifted.  */
+  cursor = 0;
+  memset (buf, 0, bufsize);
+  if (bfd_seek (abfd, 0, SEEK_SET) != 0)
+    goto fail_truncated;
+
+  while (cursor < shift)
+    {
+      this_size = min (bufsize, shift - cursor);
+      if (!full_write (buf, this_size, abfd))
+	goto fail_truncated;
+      cursor += this_size;
+    }
+
+  BFD_ASSERT (cursor == shift);
+
+  free (buf);
+  return TRUE;
+
+fail_truncated:
+  free (buf);
+  bfd_set_error (bfd_error_file_truncated);
+  return FALSE;
 }
 
 /* Special PO relocation processing.
@@ -486,7 +584,9 @@ po_final_link_relocate (reloc_howto_type *howto,
  * representations into the po_obj_tdata structure. To do so, it traverses the structures
  * in order to compute their final lengths, uses these to compute the elements' offsets,
  * and substitutes these values in the appropriate locations.
- */
+ z/OS TODO: We need to reorganize this code so that each line occurs as
+ early in the function as possible. The dependency graph the code
+ represents is just too unintelligible otherwise.  */
 static bfd_boolean
 finalize_header (bfd *abfd)
 {
@@ -499,13 +599,9 @@ finalize_header (bfd *abfd)
 
   const bfd_vma fsz = bfd_get_size (abfd);
 
-  /* NOTE: We set arelt_data->parsed_size here as a hack to allow a
-     check in bfd_bread() to suceed.  */
-  ((struct areltdata *) (abfd->arelt_data))->parsed_size = fsz;
-
   /* z/OS TODO: We load the entire elf file right now. Needless to say,
      we need to fix that.  */
-  const bfd_vma load_size = fsz - po_elf_offset (abfd);
+  const bfd_vma load_size = fsz;  /* Size of the elf file.  */
 
   /* Finalize header */
   const unsigned int rec_count = 8;
@@ -574,11 +670,12 @@ finalize_header (bfd *abfd)
 
   /* Finalize the PRAT and PRDT info.  */
   /* TODO rlds? */
-  po_prat (abfd).total_entries = pages_needed =
-    (pages_needed < po_prat (abfd).total_entries
-     ? pages_needed : po_prat (abfd).total_entries);
   po_prat_entries (abfd) =
     bfd_realloc2 (po_prat_entries (abfd), pages_needed + 1, sizeof (prat_ent));
+  /* We may have reserved room for more pages with relocations in the
+     PRAT than actually exist, so rectify that now.  */
+  po_prat (abfd).total_entries
+    = pages_needed = min (po_prat (abfd).total_entries, pages_needed);
 
   po_prat (abfd).length = PRAT_SIZE (pages_needed + 1);
   po_prat (abfd).version = PRAT_VERSION;
@@ -632,8 +729,7 @@ finalize_header (bfd *abfd)
       if (!po_prdt_pages (abfd)[page].no_checksum)
 	{
 	  char chsum[4];
-	  if (bfd_seek (abfd, po_elf_offset (abfd) + 0x1000 * page,
-			SEEK_SET) != 0
+	  if (bfd_seek (abfd, 0x1000 * page, SEEK_SET) != 0
 	      || bfd_bread (chsum, 4, abfd) != 4)
 	    return FALSE;
 	  memcpy (po_prdt_pages (abfd)[page].checksum, chsum, 4);
@@ -722,19 +818,25 @@ finalize_header (bfd *abfd)
 
   BFD_ASSERT (lidx_element_num == lidx_elements);
 
+  /* z/OS TODO: If we were to emit one, we would put the binder index
+     either here or at the end of the file. Here is more convenient,
+     but it may have to go after the text for maximum compatibility.  */
+  const unsigned int bxlf_pos = file_pos;
+
   /* Advance past pad */
   const unsigned int remainder_words = (16 - (file_pos - (file_pos / 16 * 16))) / 4;
   for (unsigned int i = 0; i < remainder_words; i ++)
     file_pos += sizeof(text_pad);
   po_text_pad_words(abfd) = remainder_words;
 
-  /* z/OS TODO: align here.  */
-  /*
+  /* Page align.  */
   file_pos = (file_pos + 0x1000 - 1) & ~(0x1000 - 1);
-  */
 
-  /* If this assert fails, then we have corrupted the elf file.  */
-  BFD_ASSERT (file_pos <= po_elf_offset (abfd));
+  /* Now that the size of the Program Object header has been calculated,
+     we need to shift the rest of the file down.  */
+  if (!shift_contents_down (abfd, file_pos))
+    return FALSE;
+  po_elf_offset (abfd) = file_pos;
 
   /* Finalize entry point */
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
@@ -745,10 +847,14 @@ finalize_header (bfd *abfd)
 
   file_pos += load_size;
 
-  /* Empty BLXF reference */
+  /* z/OS TODO: We don't actually emit any BXLFs (the binder index),
+     instead we just let the binder index header location point
+     to somewhere random. While this doesn't cause problems for the
+     USS loader, it causes other parts of the OS to not be able to
+     interoperate with our executables.  */
   po_rec_decls(abfd)[rec_num ++] = (struct po_internal_header_rec_decl) {
     .rec_type = PLMH_REC_TYPE_BXLF,
-    .rec_offset = file_pos, /* TODO */
+    .rec_offset = bxlf_pos,
     .rec_length = 0
   };
 
@@ -763,7 +869,7 @@ finalize_header (bfd *abfd)
   po_pmarl(abfd).length_text = load_size;
   po_pmarl (abfd).offset_text = po_elf_offset (abfd);
   po_pmarl(abfd).length_binder_index = 0; /* TODO */
-  po_pmarl(abfd).offset_binder_index = file_pos; /* TODO */
+  po_pmarl(abfd).offset_binder_index = bxlf_pos; /* TODO */
   po_pmarl(abfd).po_virtual_pages = module_size / 0x1000;
   po_pmarl(abfd).loadable_segment_count = 1; /* TODO */
   po_pmarl(abfd).gas_table_entry_count = 0;
@@ -794,7 +900,7 @@ finalize_header (bfd *abfd)
   char zeros[0x1000];
   memset(zeros, 0, sizeof (zeros));
   bfd_size_type size_delta = ROUND_UP (fsz, 0x1000) - fsz;
-  if (bfd_seek (abfd, fsz, SEEK_SET) != 0
+  if (bfd_seek (abfd, fsz + po_elf_offset (abfd), SEEK_SET) != 0
       || bfd_bwrite (zeros, size_delta, abfd) != size_delta)
     return FALSE;
 
@@ -904,6 +1010,8 @@ bfd_po_output_header_lidx (bfd *abfd)
             return FALSE;
         }
     }
+
+  BFD_ASSERT ((ufile_ptr) bfd_tell (abfd) <= po_elf_offset (abfd));
 
   return TRUE;
 }
@@ -1460,8 +1568,7 @@ po_before_object_p (bfd *abfd)
   /* NOTE: arelt_data is mostly invalid, it's only there to satisfy
      a check inside _bfd_generic_get_section_contents.  */
   abfd->arelt_data = bfd_zmalloc (sizeof (struct areltdata));
-  ((struct areltdata *) (abfd->arelt_data))->parsed_size =
-    bfd_get_size (abfd) - po_elf_offset (abfd);
+  arelt_size (abfd) = bfd_get_size (abfd) - po_elf_offset (abfd);
 
   return TRUE;
 }
