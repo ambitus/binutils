@@ -37,6 +37,13 @@
    position-dependent shared libraries and executables.  */
 #define ELIMINATE_COPY_RELOCS 1
 
+/* Define this to TRUE to prevent the generation of load-time consistency
+   checks in the PRDT (relocation section). They do not appear to be
+   required, and they prevent the binary from being edited by most simple
+   tools. It's unclear if there are any benefits to the consistency
+   checks on modern systems, so we do not generate them by default.  */
+#define NO_CONSISTENCY_CHECKING TRUE
+
 static
 const unsigned char iso88591_to_ibm1047[256] = {
 /*         0     1     2     3     4     5     6     7     8     9     A     B     C     D     E     F */
@@ -1273,7 +1280,7 @@ add_prdt_entry (bfd *abfd, int r_type, bfd_vma offset, bfd_vma addend)
   unsigned int curr;
   struct po_internal_relent *entry;
   bfd_size_type page = offset / 0x1000;
-  bfd_boolean no_cksum = FALSE;
+  bfd_boolean no_cksum = NO_CONSISTENCY_CHECKING;
 
   if (page > 4294967295)
     {
@@ -1337,7 +1344,7 @@ add_prdt_entry (bfd *abfd, int r_type, bfd_vma offset, bfd_vma addend)
 
   /* If a reloc intersects with the checksum area,
      the checksum needs to be set to a special value.  */
-  if ((offset & 0xFFF) < 4)
+  if (NO_CONSISTENCY_CHECKING || (offset & 0xFFF) < 4)
     {
       po_prdt_pages (abfd)[page].no_checksum = TRUE;
       memcpy (po_prdt_pages (abfd)[page].checksum, no_checksum_val, 4);
