@@ -936,7 +936,9 @@ po_prep_headers (bfd *abfd)
   po_pmar(abfd).attr2 |= PMAR_ATTR2_BINDER_F_LEVEL_REQ;
   po_pmar(abfd).attr2 |= PMAR_ATTR2_ORG0;
   // po_pmar(abfd).attr2 |= PMAR_ATTR2_NO_REPROCESS;
-  po_pmar(abfd).attr3 |= PMAR_ATTR3_PMARL_PRESENT;
+  /* z/OS NOTE: We always require page alignment.  */
+  po_pmar(abfd).attr3 |= (PMAR_ATTR3_PMARL_PRESENT
+			  | PMAR_ATTR3_PAGE_ALIGNMENT_REQ);
   po_pmar(abfd).attr4 |= PMAR_ATTR4_RMODE31;
   po_pmar(abfd).attr4 |= PMAR_AMODE64;
 
