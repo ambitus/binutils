@@ -33,10 +33,14 @@
 #include "elf/common.h"
 
 /* Some ptrace constants that might not have a definition in the
-   C library. Values correspond to PT_PSW0 and PT_PSW1 from
+   C library. PSW constants correspond to PT_PSW0 and PT_PSW1 from
    the assembler services manual for USS.  */
-#define PTRACE_READ_PSWM	40
-#define PTRACE_READ_PSWA	41
+#define PTRACE_REG_PSWM		40
+#define PTRACE_REG_PSWA		41
+#define PTRACE_REG_GPRL0	0
+#define PTRACE_REG_GPRL15	15
+#define PTRACE_REG_GPRH0	58
+#define PTRACE_REG_GPRH15	73
 
 /* The OS limits most requests dealing with buffers to a fixed maximum
    size per operation.  */
@@ -48,64 +52,6 @@ typedef uint64_t ztid_t;
 /* Annoyingly, we must fetch the low and high halves of each GPR
    separately. Use this type for each of those requests.  */
 typedef uint32_t half_gregset_t[16];
-
-/* Maps for register sets.  */
-
-static const struct regcache_map_entry zos_low_gregmap[] =
-  {
-    { 1, S390_R0_REGNUM, 4 },
-    { 1, S390_R1_REGNUM, 4 },
-    { 1, S390_R2_REGNUM, 4 },
-    { 1, S390_R3_REGNUM, 4 },
-    { 1, S390_R4_REGNUM, 4 },
-    { 1, S390_R5_REGNUM, 4 },
-    { 1, S390_R6_REGNUM, 4 },
-    { 1, S390_R7_REGNUM, 4 },
-    { 1, S390_R8_REGNUM, 4 },
-    { 1, S390_R9_REGNUM, 4 },
-    { 1, S390_R10_REGNUM, 4 },
-    { 1, S390_R11_REGNUM, 4 },
-    { 1, S390_R12_REGNUM, 4 },
-    { 1, S390_R13_REGNUM, 4 },
-    { 1, S390_R14_REGNUM, 4 },
-    { 1, S390_R15_REGNUM, 4 },
-    { 0 }
-  };
-
-static const struct regcache_map_entry zos_high_gregmap[] =
-  {
-    { 1, S390_R0_UPPER_REGNUM, 4 },
-    { 1, S390_R1_UPPER_REGNUM, 4 },
-    { 1, S390_R2_UPPER_REGNUM, 4 },
-    { 1, S390_R3_UPPER_REGNUM, 4 },
-    { 1, S390_R4_UPPER_REGNUM, 4 },
-    { 1, S390_R5_UPPER_REGNUM, 4 },
-    { 1, S390_R6_UPPER_REGNUM, 4 },
-    { 1, S390_R7_UPPER_REGNUM, 4 },
-    { 1, S390_R8_UPPER_REGNUM, 4 },
-    { 1, S390_R9_UPPER_REGNUM, 4 },
-    { 1, S390_R10_UPPER_REGNUM, 4 },
-    { 1, S390_R11_UPPER_REGNUM, 4 },
-    { 1, S390_R12_UPPER_REGNUM, 4 },
-    { 1, S390_R13_UPPER_REGNUM, 4 },
-    { 1, S390_R14_UPPER_REGNUM, 4 },
-    { 1, S390_R15_UPPER_REGNUM, 4 },
-    { 0 }
-  };
-
-static const struct regset zos_low_gregset =
-  {
-    zos_low_gregmap,
-    regcache_supply_regset,
-    regcache_collect_regset
-  };
-
-static const struct regset zos_high_gregset =
-  {
-    zos_high_gregmap,
-    regcache_supply_regset,
-    regcache_collect_regset
-  };
 
 /* Return if the register is either a GPR or a register we can get
    while we are getting the GPRs.  */
@@ -459,6 +405,7 @@ fetch_regs (struct regcache *regcache, int tid)
   ULONGEST pswa, pswm;
   gdb_byte buf[8];
   enum bfd_endian byte_order = gdbarch_byte_order (regcache->arch ());
+  int regno;
 
   /* z/OS TODO: Eventually, we should use a PT_READ_GPR blockreq to
      fetch all this info at once.  */
@@ -466,17 +413,23 @@ fetch_regs (struct regcache *regcache, int tid)
   if (ptrace_retry (PT_REGSET, tid, &half_regs, 0L, 0L) < 0)
     perror_with_name (_("Couldn't get register low halves"));
 
-  regcache_supply_regset (&zos_low_gregset, regcache, -1, &half_regs,
-			  sizeof (half_regs));
+  /* Regmaps don't work for setting the register values very well because
+     we want to write directly to the low halves of registers, which
+     regmaps don't easily support. Instead, we just do the direct
+     write.  */
+  for (regno = 0; regno <= 15; ++regno)
+    regcache->raw_supply_part (regno + S390_R0_REGNUM, 4, 4,
+			       (gdb_byte *) half_regs + 4 * regno);
 
   if (ptrace_retry (PT_REGHSET, tid, &half_regs, 0L, 0L) < 0)
     perror_with_name (_("Couldn't get register high halves"));
 
-  regcache_supply_regset (&zos_high_gregset, regcache, -1, &half_regs,
-			  sizeof (half_regs));
+  for (regno = 0; regno <= 15; ++regno)
+    regcache->raw_supply_part (regno + S390_R0_REGNUM, 0, 4,
+			       (gdb_byte *) half_regs + 4 * regno);
 
   errno = 0;
-  pswa = ptrace_retry (PT_READ_GPR, tid, PTRACE_READ_PSWA, 0L, 0L);
+  pswa = ptrace_retry (PT_READ_GPR, tid, PTRACE_REG_PSWA, 0L, 0L);
   if (errno != 0)
     perror_with_name ("Couldn't get pswa");
 
@@ -486,7 +439,7 @@ fetch_regs (struct regcache *regcache, int tid)
   /* Only way to know if an error occurred for these is to check
      errno.  */
   errno = 0;
-  pswm = ptrace_retry (PT_READ_GPR, tid, PTRACE_READ_PSWM, 0L, 0L);
+  pswm = ptrace_retry (PT_READ_GPR, tid, PTRACE_REG_PSWM, 0L, 0L);
   if (errno != 0)
     perror_with_name ("Couldn't get pswm");
 
@@ -494,7 +447,72 @@ fetch_regs (struct regcache *regcache, int tid)
   store_unsigned_integer (buf, 8, byte_order,
 			  (pswm << 32) | (pswa & 0x80000000));
   regcache->raw_supply (S390_PSWM_REGNUM, buf);
+}
 
+static void
+store_gpr (const struct regcache *regcache, int tid, int regno)
+{
+  uint32_t regpart;
+  gdb_byte buf[8];
+  int low = regno - S390_R0_REGNUM + PTRACE_REG_GPRL0;
+  int high = regno - S390_R0_REGNUM + PTRACE_REG_GPRH0;
+
+  regcache->raw_collect (regno, buf);
+  regpart = (buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3]);
+  if (ptrace_retry (PT_WRITE_GPR, tid, low, regpart, 0L) < 0)
+    perror_with_name ("ptrace PT_WRITE_GPR");
+
+  regpart = (buf[4] << 24 | buf[5] << 16 | buf[6] << 8 | buf[7]);
+  if (ptrace_retry (PT_WRITE_GPRH, tid, high, regpart, 0L) < 0)
+    perror_with_name ("ptrace PT_WRITE_GPRH");
+}
+
+static void
+store_high_gpr (const struct regcache *regcache, int tid, int regno)
+{
+  uint32_t regpart;
+  gdb_byte buf[4];
+  int high = regno - S390_R0_REGNUM + PTRACE_REG_GPRH0;
+
+  regcache->raw_collect (regno, buf);
+  regpart = (buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3]);
+  if (ptrace_retry (PT_WRITE_GPRH, tid, high, regpart, 0L) < 0)
+    perror_with_name ("ptrace PT_WRITE_GPR");
+}
+
+/* Store all valid general-purpose registers and the PSW in GDB's
+   register cache into the process/thread specified by TID.  */
+
+static void
+store_regs (const struct regcache *regcache, int tid, int regnum)
+{
+  half_gregset_t half_regs;
+  ULONGEST pswa, pswm;
+  gdb_byte buf[8];
+  int regno;
+  uint32_t regpart;
+
+  /* z/OS TODO: Eventually, we should use a PT_WRITE_GPR blockreq to
+     store all this info at once.  */
+
+  if (regnum == S390_PSWA_REGNUM || regnum == -1)
+    {
+      regcache->raw_collect (S390_PSWA_REGNUM, buf);
+      regpart = (buf[4] << 24 | buf[5] << 16 | buf[6] << 8 | buf[7]);
+      if (ptrace_retry (PT_WRITE_GPR, tid, PTRACE_REG_PSWA, regpart, 0L) < 0)
+	perror_with_name ("ptrace write PSWA");
+    }
+
+  /* The PSWM cannot be modified on z/OS, so we skip that step.  */
+
+  if (S390_R0_REGNUM <= regnum && regnum <= S390_R15_REGNUM)
+    store_gpr (regcache, tid, regnum);
+  else if (S390_R0_UPPER_REGNUM <= regnum
+	   && regnum <= S390_R15_UPPER_REGNUM)
+    store_high_gpr (regcache, tid, regnum);
+  else if (regnum == -1)
+    for (regno = S390_R0_REGNUM; regno <= S390_R15_REGNUM; ++regno)
+      store_gpr (regcache, tid, regno);
 }
 
 /* Fetch register REGNUM from the child process.  If REGNUM is -1, do
@@ -519,7 +537,14 @@ zos_nat_target::fetch_registers (struct regcache *regcache, int regnum)
 void
 zos_nat_target::store_registers (struct regcache *regcache, int regnum)
 {
-  /* TODO.  */
+  pid_t tid = get_ptrace_pid (regcache->ptid ());
+
+  /* z/OS TODO: Special case -1 into one big blockreq.  */
+
+  if (regnum == -1 || gpr_regnum_p (regnum))
+    store_regs (regcache, tid, regnum);
+
+  /* z/OS TODO: All the rest.  */
 }
 
 void

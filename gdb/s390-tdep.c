@@ -336,12 +336,319 @@ s390_software_single_step (struct regcache *regcache)
   return {loc};
 }
 
+/* Software single stepping for z/OS.
+   z/OS TODO: There's a possible case where we could change the
+   inferior's functionality if one of prospective next addresses
+   is also the target of a load, in which case the load will see
+   breakpoint svc.  */
+
 static std::vector<CORE_ADDR>
 zos_software_single_step (struct regcache *regcache)
 {
+  uint8_t insn[S390_MAX_INSTR_SIZE];
+  struct gdbarch *gdbarch = regcache->arch ();
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR loc = regcache_read_pc (regcache);
+  CORE_ADDR target, tmp;
+  LONGEST half_off, disp, in_execute = -1;
+  unsigned int reg, index, base;
+  std::vector<CORE_ADDR> next_pcs;
 
-  return {loc + 2, loc + 4, loc + 6};
+  /* The process is fundamentally simple: read the current instruction,
+     and set a breakpoint on the following one. If the instruction is
+     a branch, set a breakpoint on the branch target as well. If the
+     instruction is an execute-type instruction, we also need to check
+     if the execute target instruction may branch.  */
+read_insn:
+  int len = s390_readinstruction (insn, loc);
+  if (len < 0)
+    return next_pcs;
+  if (in_execute == -1)
+    next_pcs.push_back (loc + len);
+  else
+    insn[1] |= in_execute & 0xff;
+
+  switch (insn[0])
+    {
+    /* RR */
+    case op_balr:
+    case op_bctr:
+    case op_bcr:
+    case op_bsm:
+    case op_bassm:
+    case op_basr:
+      reg = insn[1] & 0xf;
+      if (reg != 0)
+	{
+	  regcache_raw_read_unsigned (regcache,
+				      S390_R0_REGNUM + reg, &target);
+	  next_pcs.push_back (target);
+	}
+      break;
+
+    /* RX */
+    case op_ex:
+    case op_bal:
+    case op_bct:
+    case op_bc:
+    case op_bas:
+      index = insn[1] & 0xf;
+      base = (insn[2] >> 4) & 0xf;
+      target = ((insn[2] & 0xf) << 8) | insn[3];
+      if (base != 0)
+	{
+	  regcache_raw_read_unsigned (regcache,
+				      S390_R0_REGNUM + base, &tmp);
+	  target += tmp;
+	}
+      if (index != 0)
+	{
+	  regcache_raw_read_unsigned (regcache,
+				      S390_R0_REGNUM + index, &tmp);
+	  target += tmp;
+	}
+      if (insn[0] == op_ex)
+	{
+	  reg = insn[1] >> 4;
+	  if (reg != 0)
+	    {
+	      regcache_raw_read_signed (regcache, S390_R0_REGNUM + reg,
+					&in_execute);
+	      in_execute &= 0xff;
+	    }
+	  else
+	    in_execute = 0;
+	  loc = target;
+	  goto read_insn;
+	}
+      next_pcs.push_back (target);
+      break;
+
+    /* RSI */
+    case op_brxh:
+    case op_brxle:
+      half_off = (int8_t) insn[2] << 8 | insn[3];
+      next_pcs.push_back (loc + 2 * half_off);
+      break;
+
+    /* RS */
+    case op_bxh:
+    case op_bxle:
+      base = (insn[2] >> 4) & 0xf;
+      target = ((insn[2] & 0xf) << 8) | insn[3];
+      if (base != 0)
+	{
+	  regcache_raw_read_unsigned (regcache,
+				      S390_R0_REGNUM + base, &tmp);
+	  target += tmp;
+	}
+      break;
+
+      /* RI */
+    case 0xa7:
+      switch (insn[1] & 0xf)
+	{
+	case op2_brc:
+	case op2_bras:
+	case op2_brct:
+	case op2_brctg:
+	  half_off = (int8_t) insn[2] << 8 | insn[3];
+	  next_pcs.push_back (loc + 2 * half_off);
+	  break;
+	}
+      break;
+
+    case 0xb2:
+      switch (insn[0] << 8 | insn[1])
+	{
+	/* RRE */
+	case op_bakr:
+	  reg = insn[3] & 0xf;
+	  if (reg != 0)
+	    {
+	      regcache_raw_read_unsigned (regcache,
+					  S390_R0_REGNUM + reg, &target);
+	      next_pcs.push_back (target);
+	    }
+	  break;
+
+	/* S */
+	case op_tend:
+	case op_tabort:
+	  /* z/OS TODO: Need to handle transactions here.  */
+	  break;
+	}
+      break;
+
+    case 0xb9:
+      switch (insn[0] << 8 | insn[1])
+	{
+	/* RRE */
+	case op_bctgr:
+	  reg = insn[3] & 0xf;
+	  if (reg != 0)
+	    {
+	      regcache_raw_read_unsigned (regcache,
+					  S390_R0_REGNUM + reg, &target);
+	      next_pcs.push_back (target);
+	    }
+	  break;
+	}
+      break;
+
+    case 0xe5:
+      switch (insn[0] << 8 | insn[1])
+	{
+	/* SIL */
+	case op_tbegin:
+	case op_tbeginc:
+	  /* z/OS TODO: Need to handle transactions here.  */
+	  break;
+	}
+      break;
+
+    /* RIL */
+    case 0xc6:
+      if ((insn[1] & 0xf) == op2_exrl)
+	{
+	  half_off = ((int8_t) insn[2] << 24
+		      | insn[3] << 16
+		      | insn[4] << 8
+		      | insn[5]);
+	  reg = insn[1] >> 4;
+	  if (reg != 0)
+	    {
+	      regcache_raw_read_signed (regcache, S390_R0_REGNUM + reg,
+					&in_execute);
+	      in_execute &= 0xff;
+	    }
+	  else
+	    in_execute = 0;
+	  loc += 2 * half_off;
+	  goto read_insn;
+	}
+      break;
+
+    case 0xcc:
+      if ((insn[1] & 0xf) == op2_brcth)
+	{
+	  half_off = ((int8_t) insn[2] << 24
+		      | insn[3] << 16
+		      | insn[4] << 8
+		      | insn[5]);
+	  next_pcs.push_back (loc + 2 * half_off);
+	}
+      break;
+
+    case 0xc0:
+      switch (insn[1] & 0xf)
+	{
+	case op2_brasl:
+	case op2_brcl:
+	  half_off = ((int8_t) insn[2] << 24
+		      | insn[3] << 16
+		      | insn[4] << 8
+		      | insn[5]);
+	  next_pcs.push_back (loc + 2 * half_off);
+	  break;
+	}
+      break;
+
+    /* RXY */
+    case 0xe3:
+      switch (insn[5])
+	{
+	case op2_bctg:
+	case op2_bic:
+	  index = insn[1] & 0xf;
+	  base = (insn[2] >> 4) & 0xf;
+	  if (base != 0)
+	    regcache_raw_read_unsigned (regcache,
+					S390_R0_REGNUM + base, &target);
+	  if (index != 0)
+	    {
+	      regcache_raw_read_unsigned (regcache,
+					  S390_R0_REGNUM + index, &tmp);
+	      target += tmp;
+	    }
+	  disp = (((insn[2] & 0xf) << 8) | insn[3]);
+	  /* z/OS TODO: We might want to set another breakpoint here
+	     with the current value of disp, because that is the
+	     effective displacement for machines without the
+	     long-displacement facility, but is that safe?  */
+	  disp |= (int8_t) insn[4] << 12;
+	  next_pcs.push_back (target + disp);
+	  break;
+	}
+      break;
+
+    /* RSY */
+    case 0xeb:
+      switch (insn[5])
+	{
+	case op2_bxhg:
+	case op2_bxleg:
+	  base = (insn[2] >> 4) & 0xf;
+	  if (base != 0)
+	    regcache_raw_read_unsigned (regcache,
+					S390_R0_REGNUM + base, &target);
+	  disp = (((insn[2] & 0xf) << 8) | insn[3]);
+	  /* z/OS TODO: We might want to set another breakpoint here
+	     with the current value of disp, because that is the
+	     effective displacement for machines without the
+	     long-displacement facility, but is that safe?  */
+	  disp |= (int8_t) insn[4] << 12;
+	  next_pcs.push_back (target + disp);
+	  break;
+	}
+      break;
+
+    case 0xec:
+      switch (insn[5])
+	{
+	/* RIE */
+	case op2_brxhg:
+	case op2_brxlg:
+	case op2_cgrj:
+	case op2_clgrj:
+	case op2_crj:
+	case op2_clrj:
+	case op2_cgij:
+	case op2_clgij:
+	case op2_cij:
+	case op2_clij:
+	  half_off = (int8_t) insn[2] << 8 | insn[3];
+	  next_pcs.push_back (loc + 2 * half_off);
+	  break;
+
+	/* RRS */
+	case op2_cgrb:
+	case op2_clgrb:
+	case op2_crb:
+	case op2_clrb:
+	/* RIS */
+	case op2_cgib:
+	case op2_clgib:
+	case op2_cib:
+	case op2_clib:
+	  base = (insn[2] >> 4) & 0xf;
+	  if (base != 0)
+	    regcache_raw_read_unsigned (regcache,
+					S390_R0_REGNUM + base, &target);
+	  target += (insn[2] & 0xf) << 8 | insn[3];
+	  next_pcs.push_back (target);
+	  break;
+	}
+      break;
+    }
+
+  /* Remove duplicate breakpoints.  */
+  size_t size = next_pcs.size ();
+  gdb_assert (size <= 2);
+  if (size > 1 && next_pcs[0] == next_pcs[1])
+    next_pcs.pop_back ();
+
+  return next_pcs;
 }
 
 /* Displaced stepping.  */
