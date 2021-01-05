@@ -225,10 +225,11 @@ zos_get_load_addr (void)
   origin = info->text_origin;
   xfree (info);
 
-  /* z/OS TODO: should include filename and PID.  */
-  fprintf_unfiltered (gdb_stdlog,
-		     _("Main module loaded at: 0x%016lx\n"), origin);
-  gdb_flush (gdb_stdout);
+  /* z/OS TODO: need to be able to get this info in some other way.
+     Should include filename and PID.  */
+  if (debug_zos_nat)
+    fprintf_unfiltered (gdb_stdlog,
+			_("Main module loaded at: 0x%016lx\n"), origin);
   /* z/OS TODO: Is the initial load module always the first load module?  */
 
   return origin;
@@ -321,7 +322,11 @@ zos_xfer_memory (gdb_byte *readbuf,
   while (n < len)
     {
       size_t chunk = std::min<ULONGEST>(len - n, PTRACE_BUFF_SIZE_MAX);
-      printf ("(%lx, %lu, %p)\n", addr + n, chunk, buf + n); fflush (NULL);
+
+      if (debug_zos_nat)
+	fprintf_unfiltered (gdb_stdlog,
+			    "zos mem xfer: (addr: 0x%lx, size: %lu)\n",
+			    addr + n, chunk);
 
       errno = 0;
       ptrace_retry (req, pid, addr + n, chunk, buf + n);
