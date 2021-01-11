@@ -31,6 +31,7 @@
 #include "s390-tdep.h"
 #include "elf/external.h"
 #include "elf/common.h"
+#include "zos-tdep.h"
 
 /* Some ptrace constants that might not have a definition in the
    C library. PSW constants correspond to PT_PSW0 and PT_PSW1 from
@@ -39,8 +40,13 @@
 #define PTRACE_REG_PSWA		41
 #define PTRACE_REG_GPRL0	0
 #define PTRACE_REG_GPRL15	15
+#define PTRACE_REG_FPR0		16
+#define PTRACE_REG_FPR15	31
+#define PTRACE_REG_FPC		32
 #define PTRACE_REG_GPRH0	58
 #define PTRACE_REG_GPRH15	73
+#define PTRACE_REG_VR0		74
+#define PTRACE_REG_VR31		105
 
 /* The OS limits most requests dealing with buffers to a fixed maximum
    size per operation.  */
@@ -102,6 +108,9 @@ public:
 
   /* We override it so we can store the thread id immediately.  */
   ptid_t wait (ptid_t, struct target_waitstatus *, int) override;
+
+  /* Detect target architecture.  */
+  const struct target_desc *read_description() override;
 };
 
 static zos_nat_target the_zos_nat_target;
@@ -520,6 +529,110 @@ store_regs (const struct regcache *regcache, int tid, int regnum)
       store_gpr (regcache, tid, regno);
 }
 
+static void
+do_fpregs (struct regcache *regcache, int tid, int regnum, bool write)
+{
+  bfd_byte buf[16];
+  int regno;
+  enum __ptrace_request pt_fpr_op = write ? PT_WRITE_FPR : PT_READ_FPR;
+  enum __ptrace_request pt_vr_op = write ? PT_WRITE_VR : PT_READ_VR;
+
+  /* z/OS TODO: Eventually, we should use a blockreq to
+     fetch all this info at once if fetching all regs.  */
+
+  if (regnum == -1 || regnum == S390_FPC_REGNUM)
+    {
+      if (write)
+	regcache->raw_collect (S390_FPC_REGNUM, buf);
+      if (-1 == ptrace_retry (pt_fpr_op, tid, buf, PTRACE_REG_FPC, 0L))
+	perror_with_name ("FPC fetch failed");
+      if (!write)
+	regcache->raw_supply (S390_FPC_REGNUM, buf);
+    }
+
+  /* Operate on the  FPRs, but only if we're not reading VRs. Otherwise
+     the FPR operation is part of the VR read.  */
+  if ((regnum == -1 && 0 /* TODO: VR availability check here  */)
+      || (regnum >= S390_F0_REGNUM && regnum <= S390_F15_REGNUM))
+    for (regno = std::max (regnum, S390_F0_REGNUM);
+	 regno <= S390_F15_REGNUM; ++regno)
+      {
+	if (write)
+	  regcache->raw_collect (regno, buf);
+	if (-1 == ptrace_retry (pt_fpr_op, tid, buf,
+				regno - S390_F0_REGNUM
+				+ PTRACE_REG_FPR0, 0L))
+	  perror_with_name ("FPR fetch/store failed");
+	if (!write)
+	  regcache->raw_supply (regno, buf);
+	if (regnum != -1)
+	  break;
+      }
+  else
+    {
+      /* Operate on the VRs.  */
+
+      /* Operate on the first 16 VRs. GDB stores them split into the FPRs
+	 and psuedoregisters representing the lower halves.  */
+      if (regnum == -1 || regnum >= S390_V0_LOWER_REGNUM)
+	for (regno = std::max (regnum, S390_V0_LOWER_REGNUM);
+	     regno <= S390_V15_LOWER_REGNUM; ++regno)
+	  {
+	    int adj_regno = regno - S390_V0_LOWER_REGNUM;
+	    if (write)
+	      {
+		regcache->raw_collect (adj_regno + S390_F0_REGNUM, buf);
+		regcache->raw_collect (regno, buf + 8);
+	      }
+	    if (-1 == ptrace_retry (pt_vr_op, tid, buf,
+				    adj_regno + PTRACE_REG_VR0, 0L))
+	      perror_with_name ("Low VR fetch/store failed");
+	    if (!write)
+	      {
+		regcache->raw_supply (adj_regno + S390_F0_REGNUM, buf);
+		regcache->raw_supply (regno, buf + 8);
+	      }
+	    if (regnum != -1)
+	      break;
+	  }
+
+      /* Operate on last 16 VRs.  */
+      if (regnum == -1 || regnum >= S390_V16_REGNUM)
+	for (regno = std::max (regnum, S390_V16_REGNUM);
+	     regno <= S390_V31_REGNUM; ++regno)
+	  {
+	    if (write)
+	      regcache->raw_collect (regno, buf);
+	    if (-1 == ptrace_retry (pt_vr_op, tid, buf,
+				    regno - S390_V0_LOWER_REGNUM
+				    + PTRACE_REG_VR0, 0L))
+	      perror_with_name ("High VR fetch/store failed");
+	    if (!write)
+	      regcache->raw_supply (regno, buf);
+	    if (regnum != -1)
+	      break;
+	  }
+    }
+}
+
+/* Fetch all floating-point registers from process/thread TID and store
+   their values in GDB's register cache.  */
+
+static void
+fetch_fpregs (struct regcache *regcache, int tid, int regnum)
+{
+  do_fpregs (regcache, tid, regnum, false);
+}
+
+/* Store all valid floating-point registers in GDB's register cache
+   into the process/thread specified by TID.  */
+
+static void
+store_fpregs (struct regcache *regcache, int tid, int regnum)
+{
+  do_fpregs (regcache, tid, regnum, true);
+}
+
 /* Fetch register REGNUM from the child process.  If REGNUM is -1, do
    this for all registers.  */
 
@@ -532,6 +645,8 @@ zos_nat_target::fetch_registers (struct regcache *regcache, int regnum)
 
   if (regnum == -1 || gpr_regnum_p (regnum))
     fetch_regs (regcache, tid);
+
+  fetch_fpregs (regcache, tid, regnum);
 
   /* z/OS TODO: All the rest.  */
 }
@@ -549,7 +664,20 @@ zos_nat_target::store_registers (struct regcache *regcache, int regnum)
   if (regnum == -1 || gpr_regnum_p (regnum))
     store_regs (regcache, tid, regnum);
 
+  store_fpregs (regcache, tid, regnum);
+
   /* z/OS TODO: All the rest.  */
+}
+
+/* After connecting to the inferior, report which set of registers it
+   supports.  */
+
+const struct target_desc *
+zos_nat_target::read_description ()
+{
+  /* z/OS TODO: actually do checks here. It may not be possible to get
+     info for some of the classes of registers easily.  */
+  return tdesc_s390x_gs_linux64;
 }
 
 void

@@ -27,6 +27,22 @@
 #include "solib-svr4.h"
 #include "s390-tdep.h"
 
+#include "features/s390-linux32v1.c"
+#include "features/s390-linux32v2.c"
+#include "features/s390-linux64.c"
+#include "features/s390-linux64v1.c"
+#include "features/s390-linux64v2.c"
+#include "features/s390-te-linux64.c"
+#include "features/s390-vx-linux64.c"
+#include "features/s390-tevx-linux64.c"
+#include "features/s390-gs-linux64.c"
+#include "features/s390x-linux64v1.c"
+#include "features/s390x-linux64v2.c"
+#include "features/s390x-te-linux64.c"
+#include "features/s390x-vx-linux64.c"
+#include "features/s390x-tevx-linux64.c"
+#include "features/s390x-gs-linux64.c"
+
 static void
 s390_zos_init_abi_64 (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
@@ -47,4 +63,21 @@ _initialize_zos_tdep (void)
 {
   gdbarch_register_osabi (bfd_arch_s390, bfd_mach_s390_64, GDB_OSABI_ZOS,
 			  s390_zos_init_abi_64);
+
+  /* Initialize the GNU/Linux target descriptions.  */
+  initialize_tdesc_s390_linux32v1 ();
+  initialize_tdesc_s390_linux32v2 ();
+  initialize_tdesc_s390_linux64 ();
+  initialize_tdesc_s390_linux64v1 ();
+  initialize_tdesc_s390_linux64v2 ();
+  initialize_tdesc_s390_te_linux64 ();
+  initialize_tdesc_s390_vx_linux64 ();
+  initialize_tdesc_s390_tevx_linux64 ();
+  initialize_tdesc_s390_gs_linux64 ();
+  initialize_tdesc_s390x_linux64v1 ();
+  initialize_tdesc_s390x_linux64v2 ();
+  initialize_tdesc_s390x_te_linux64 ();
+  initialize_tdesc_s390x_vx_linux64 ();
+  initialize_tdesc_s390x_tevx_linux64 ();
+  initialize_tdesc_s390x_gs_linux64 ();
 }
