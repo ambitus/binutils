@@ -26,6 +26,7 @@
 #include "inf-ptrace.h"
 #include "gdbcmd.h"
 #include "gdbthread.h"
+#include "gdb_wait.h"
 #include "regset.h"
 #include <sys/ptrace.h>
 #include "s390-tdep.h"
@@ -87,7 +88,7 @@ ptrace_retry (enum __ptrace_request req, Args... args)
     {
       ret = ptrace (req, std::forward<Args> (args)...);
     }
-  while (errno == EAGAIN);
+  while (errno == EINTR || errno == EAGAIN);
 
   return ret;
 };
@@ -102,6 +103,8 @@ public:
 					ULONGEST offset, ULONGEST len,
 					ULONGEST *xfered_len) override;
 
+  void kill () override;
+
   /* Add our register access methods.  */
   void fetch_registers (struct regcache *, int) override;
   void store_registers (struct regcache *, int) override;
@@ -110,7 +113,7 @@ public:
   ptid_t wait (ptid_t, struct target_waitstatus *, int) override;
 
   /* Detect target architecture.  */
-  const struct target_desc *read_description() override;
+  const struct target_desc *read_description () override;
 };
 
 static zos_nat_target the_zos_nat_target;
@@ -667,6 +670,71 @@ zos_nat_target::store_registers (struct regcache *regcache, int regnum)
   store_fpregs (regcache, tid, regnum);
 
   /* z/OS TODO: All the rest.  */
+}
+
+static void
+stop_all (pid_t pid)
+{
+  int ret;
+
+  /* z/OS ptrace stops all threads for most events so we can just send
+     a signal.  */
+  if (debug_zos_nat)
+    fprintf_unfiltered (gdb_stdlog, "zos:  kill %d **<SIGSTOP>**\n", pid);
+  errno = 0;
+  ret = ::kill (pid, SIGSTOP);
+  if (debug_zos_nat)
+    fprintf_unfiltered (gdb_stdlog, "zos:  kill returned %d %s\n", ret,
+			errno ? safe_strerror (errno) : "ERRNO-OK");
+}
+
+/* Kill the inferior.  */
+
+void
+zos_nat_target::kill ()
+{
+  int ret, status;
+  pid_t pid = inferior_ptid.pid ();
+
+  /* TODO: If forks exist, we should kill all the children.  */
+
+  /* Stop all threads before killing them, since ptrace requires
+     that the thread is stopped to sucessfully PTRACE_KILL.  */
+  stop_all (pid);
+
+  /* TODO: Clear out all event notifications.  */
+  /* A single PT_KILL may not actually kill the tracee, but it will
+     usually put it into a state where a second PT_KILL will work.
+     In case there are situations where that is not enough, we repeat
+     as long as necessary.  */
+  do
+    {
+      if (debug_zos_nat)
+	fprintf_unfiltered (gdb_stdlog,
+			    "zos:  attempting to PT_KILL %d\n", pid);
+      if (ptrace_retry (PT_KILL, pid, 0, 0) == -1)
+	{
+	  if (errno == ECHILD)
+	    break;
+	  else
+	    perror_with_name ("ptrace error while trying PT_KILL");
+	}
+
+      /* A PT_KILL that succeeded but did not kill the process will give
+	 us an event notification.  */
+      do
+	{
+	  ret = waitpid (pid, &status, 0);
+	}
+      while (ret == -1 && errno == EINTR);
+      if (debug_zos_nat)
+	fprintf_unfiltered (gdb_stdlog,
+			    "zos:  discarding wait status for pid %d: 0x%08x\n",
+			    pid, status);
+    }
+  while (!WIFSIGNALED (status) && !WIFEXITED (status));
+
+  target_mourn_inferior (inferior_ptid);
 }
 
 /* After connecting to the inferior, report which set of registers it
