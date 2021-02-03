@@ -1340,6 +1340,14 @@ s390_register_call_saved (struct gdbarch *gdbarch, int regnum)
 {
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
 
+  if (target_zos)
+    if ((regnum >= S390_R1_REGNUM && regnum <= S390_R14_REGNUM)
+	|| (regnum >= S390_F8_REGNUM && regnum <= S390_F15_REGNUM)
+	|| (regnum >= S390_A2_REGNUM && regnum <= S390_A13_REGNUM)
+	|| (regnum >= S390_V8_LOWER_REGNUM
+	    && regnum <= S390_V23_REGNUM))
+      return 1;
+
   switch (tdep->abi)
     {
     case ABI_LINUX_S390:
