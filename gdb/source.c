@@ -734,7 +734,11 @@ openp (const char *path, openp_flags opts, const char *string,
   if (!path)
     path = ".";
 
+#ifdef __ZOS__  /* z/OS uses a different binary flag.  */
+  mode |= O_TRUEBINARY;
+#else
   mode |= O_BINARY;
+#endif
 
   if ((opts & OPF_TRY_CWD_FIRST) || IS_ABSOLUTE_PATH (string))
     {

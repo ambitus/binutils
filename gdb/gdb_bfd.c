@@ -411,7 +411,11 @@ gdb_bfd_open (const char *name, const char *target, int fd)
 
   if (fd == -1)
     {
+#ifdef __ZOS__  /* z/OS uses a different binary flag.  */
+      fd = gdb_open_cloexec (name, O_RDONLY | O_TRUEBINARY, 0);
+#else
       fd = gdb_open_cloexec (name, O_RDONLY | O_BINARY, 0);
+#endif
       if (fd == -1)
 	{
 	  bfd_set_error (bfd_error_system_call);
