@@ -2154,6 +2154,7 @@ elf_s390_relocate_section (bfd *output_bfd,
       int tls_type;
       asection *base_got = htab->elf.sgot;
       bfd_boolean resolved_to_zero;
+      int rel_forced;  /* dyn reloc forced.  */
 
       r_type = ELF64_R_TYPE (rel->r_info);
       if (r_type == (int) R_390_GNU_VTINHERIT
@@ -2663,6 +2664,7 @@ elf_s390_relocate_section (bfd *output_bfd,
 		}
 	    }
 
+	  rel_forced = 0;
 	  if ((bfd_link_pic (info)
 	       && (h == NULL
 		   || (ELF_ST_VISIBILITY (h->other) == STV_DEFAULT
@@ -2685,8 +2687,9 @@ elf_s390_relocate_section (bfd *output_bfd,
 		       && !h->def_regular)
 		      || h->root.type == bfd_link_hash_undefweak
 		      || h->root.type == bfd_link_hash_undefined))
-	      || (FORCE_DYN_RELOC (info, rel)
-		  && (relocation != 0 || rel->r_addend != 0)))
+	      || (rel_forced = (FORCE_DYN_RELOC (info, rel)
+				&& (relocation != 0
+				    || rel->r_addend != 0))))
 	    {
 	      Elf_Internal_Rela outrel;
 	      bfd_boolean skip, relocate;
@@ -2723,7 +2726,8 @@ elf_s390_relocate_section (bfd *output_bfd,
 			   || r_type == R_390_PC64
 			   || !bfd_link_pic (info)
 			   || !SYMBOLIC_BIND (info, h)
-			   || !h->def_regular))
+			   || !h->def_regular)
+		       && !rel_forced)
 		{
 		  outrel.r_info = ELF64_R_INFO (h->dynindx, r_type);
 		  outrel.r_addend = rel->r_addend;
@@ -2739,6 +2743,9 @@ elf_s390_relocate_section (bfd *output_bfd,
 		    }
 		  else
 		    {
+		      /* z/OS TODO: This wouldn't work correctly for us,
+			 but it's never used right now. We could make it
+			 work for 32-bit relocs at least.  */
 		      long sindx;
 
 		      if (bfd_is_abs_section (sec))
@@ -2785,7 +2792,7 @@ elf_s390_relocate_section (bfd *output_bfd,
 		 not want to fiddle with the addend.  Otherwise, we
 		 need to include the symbol value so that it becomes
 		 an addend for the dynamic reloc.  */
-	      if (! relocate)
+	      if (!relocate && !rel_forced)
 		continue;
 	    }
 
